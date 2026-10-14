@@ -1,0 +1,12 @@
+# Скопируйте в config.yaml и заполните.
+llm:
+  main: "openai/gpt-4o-mini"      # или "anthropic/claude-...", "ollama/qwen..."
+  vision: null                    # например "ollama/qwen2.5vl" для снапшотов Frigate
+  api_base: null                  # свой OpenAI-совместимый сервер
+
+home_assistant:
+  url: "http://homeassistant.local:8123"
+  token: ""                       # long-lived token отдельного пользователя Баюна
+
+database: "bayun.db"
+speaker_hint_window_s: 3.0

@@ -1,0 +1,13 @@
+{
+  "domain": "bayun",
+  "name": "Bayun",
+  "codeowners": ["@KonstantinShabaev"],
+  "config_flow": false,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/KonstantinShabaev/bayun",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/KonstantinShabaev/bayun/issues",
+  "requirements": [],
+  "version": "0.0.1"
+}

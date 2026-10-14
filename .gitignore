@@ -11,3 +11,6 @@ bench/audio/
 *.wav
 *.db
 models/
+.dev/
+config.yaml
+policy.yaml

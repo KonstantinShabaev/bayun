@@ -1,0 +1,43 @@
+# Стенд для разработки: HA + штатные Whisper/Piper + MQTT + сервисы Баюна.
+#   docker compose -f docker-compose.dev.yml up
+# HA: http://localhost:8123. В интеграции Wyoming добавить whisper:10300, piper:10200, bayun-stt:10301.
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./.dev/ha:/config
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+
+  whisper:
+    image: rhasspy/wyoming-whisper
+    command: --model small --language ru
+    volumes:
+      - ./.dev/whisper:/data
+    ports:
+      - "10300:10300"
+
+  piper:
+    image: rhasspy/wyoming-piper
+    command: --voice ru_RU-irina-medium
+    volumes:
+      - ./.dev/piper:/data
+    ports:
+      - "10200:10200"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    command: mosquitto -c /mosquitto-no-auth.conf
+    ports:
+      - "1883:1883"
+
+  bayun-stt:
+    build: { context: ., dockerfile: stt/Dockerfile }
+    ports:
+      - "10301:10300"
+
+  bayun-brain:
+    build: { context: ., dockerfile: brain/Dockerfile }
+    ports:
+      - "8765:8765"

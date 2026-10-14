@@ -1,0 +1,10 @@
+# Уровни действий и права по ролям (этап M3).
+levels:
+  safe:     [light.*, media_player.*, cover.curtain_*]
+  confirm:  [lock.*, climate.*, cover.garage*, alarm_control_panel.*]
+  deny:     [switch.gas_*, homeassistant.restart]
+roles:
+  adult: { safe: allow, confirm: ask }
+  child: { safe: allow, confirm: deny }
+  guest: { safe: allow, confirm: deny }
+untrusted_sources: [camera, web]   # текст из этих источников не может инициировать действия
