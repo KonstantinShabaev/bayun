@@ -1,6 +1,6 @@
 # Баюн — заметки для разработки
 
-- Монорепо на uv workspace: `stt/` (bayun-stt), `brain/` (bayun-brain), `bench/` (bayun-bench). HA-интеграция в `ha_integration/` вне workspace.
+- Монорепо на uv workspace: `stt/` (bayun-stt), `brain/` (bayun-brain), `bench/` (bayun-bench). HA-интеграция в `custom_components/bayun/` (в корне, как требуют HACS и hassfest), вне workspace.
 - Проверки: `uv sync`, `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`, `uv run pytest`.
 - План и критерии готовности: `docs/ROADMAP.md`; архитектура: `docs/PROJECT_SPEC.md`.
 - Тексты для пользователя, комментарии и документация — по-русски.

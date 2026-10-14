@@ -25,7 +25,7 @@ Home Assistant (HA) решает платформенную часть: устр
 ### Не цели (сознательно)
 - Своя платформа умного дома, свои интеграции устройств, форк HA.
 - Своё железо колонки (используем Voice PE / ESP32-S3-BOX / RPi + ReSpeaker).
-- Музыка, контент, навыки в духе Алисы.
+- Свой музыкальный сервис, контент, навыки в духе Алисы. Музыку голосом даём через готовый Music Assistant (см. §4.4), а не пишем сами.
 - Монетизация на старте.
 
 ---
@@ -100,12 +100,11 @@ bayun/
 │   ├── config.example.yaml
 │   ├── Dockerfile
 │   └── pyproject.toml
-├── ha_integration/
-│   └── custom_components/bayun/   # тонкий conversation agent для HA
-│       ├── __init__.py
-│       ├── manifest.json
-│       ├── config_flow.py
-│       └── conversation.py      # пересылает текст в brain /converse
+├── custom_components/bayun/      # тонкий conversation agent для HA (в корне — так требуют HACS и hassfest)
+│   ├── __init__.py
+│   ├── manifest.json
+│   ├── config_flow.py
+│   └── conversation.py          # пересылает текст в brain /converse
 ├── addons/                      # обёртки HA add-on для stt и brain
 ├── bench/                       # bayun-bench — датасет и замеры
 │   ├── commands.csv             # id, текст-эталон, путь к wav, говорящий, шум
@@ -206,14 +205,21 @@ untrusted_sources: [camera, web]   # текст из этих источнико
 - MQTT `frigate/events` → снапшот → VLM-описание → `facts` (kind=episode, source=camera, с TTL).
 - Описания с камер помечаются как недоверенные (prompt injection через надписи в кадре).
 
-### 4.3 ha_integration (custom component)
+### 4.3 custom_components/bayun (интеграция HA)
 
 - Регистрирует `ConversationEntity`, в `async_process` пересылает текст и `device_id` в brain и возвращает ответ.
 - Config flow: URL brain и токен.
 - В пайплайне Assist включить «сначала локальные команды», тогда простые команды не доходят до LLM.
 - Распространение через HACS.
 
-### 4.4 bayun-bench
+### 4.4 Музыка голосом
+
+- Плеер и каталоги — [Music Assistant](https://www.music-assistant.io/) (интеграция HA): Яндекс Музыка, Spotify, YouTube Music, SoundCloud, радио, свои файлы.
+- Колонка-сателлит на ESP32-S3 (ESPHome) видна в Music Assistant как плеер.
+- В brain инструмент `music.play(query, room)` → `music_assistant.play_media`: «Включи Кино, Группа крови» разбирает LLM, ищет и играет Music Assistant.
+- Во время музыки нужен эхоподавитель на сателлите (XMOS), иначе колонка не услышит wake word поверх своей же музыки.
+
+### 4.5 bayun-bench
 
 - `commands.csv`: 200–500 команд × несколько говорящих (взрослые, ребёнок, пожилой) × условия (тишина, ТВ, кухня).
 - `run_wer.py`: WER/CER и латентность для `whisper`, `gigaam-ctc`, `gigaam-rnnt`, до и после нормализации.

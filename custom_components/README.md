@@ -1,4 +1,4 @@
-# ha_integration
+# custom_components/bayun
 
 Тонкий conversation agent для Home Assistant, пересылает текст в bayun-brain. Распространение через HACS. Этап M2.
 
