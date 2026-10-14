@@ -244,7 +244,7 @@ untrusted_sources: [camera, web]   # текст из этих источнико
 | Тесты | pytest, ruff, mypy |
 | Поставка | Docker, HA add-ons, HACS |
 
-**Железо для разработки:** ноутбук Dell Latitude 3420 (i5-1145G7 / 16 ГБ) под Proxmox: ВМ с HA OS + ВМ с сервисами Баюна, см. [hardware.md](hardware.md). Один сателлит (HA Voice PE или ESP32-S3-BOX-3). Для локальной LLM опционально: машина с GPU или Mac mini. Целевая платформа для пользователей — мини-ПК уровня N100.
+**Железо для разработки:** ноутбук Dell Latitude 3420 (i5-1145G7 / 16 ГБ) под Proxmox: ВМ с HA OS + ВМ с сервисами Баюна, см. [hardware.md](hardware.md). Сателлит: ReSpeaker Lite (ESP32-S3 + XMOS), см. [satellite/README.md](../satellite/README.md). Для локальной LLM опционально: машина с GPU или Mac mini. Целевая платформа для пользователей — мини-ПК уровня N100.
 
 ---
 

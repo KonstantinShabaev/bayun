@@ -49,6 +49,7 @@ Piper-ru (TTS) ◄────────────────────�
 | [`stt/`](stt/) | `bayun-stt`, Wyoming STT-сервер |
 | [`brain/`](brain/) | `bayun-brain`, агентный сервис на FastAPI |
 | [`custom_components/bayun/`](custom_components/bayun/) | тонкий conversation agent для HA (HACS) |
+| [`satellite/`](satellite/) | колонка на ReSpeaker Lite (ESPHome): железо, прошивка, пайплайн |
 | [`addons/`](addons/) | обёртки HA add-on |
 | [`bench/`](bench/) | датасет команд и замеры WER / латентности |
 | [`docs/`](docs/) | спецификация, план, идеи, железо, продвижение |

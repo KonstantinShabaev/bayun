@@ -16,6 +16,8 @@
 - [ ] Уточнить актуальные модели GigaAM (CTC / RNNT) и их лицензию
 - [ ] Уточнить транспорт и URL MCP-сервера HA, проверить вызов из Python-клиента
 - [ ] Проверить покрытие русских интентов HA на своих 50 командах (IDEAS §4)
+- [ ] Собрать и прошить колонку на ReSpeaker Lite, добавить её в HA ([satellite/README.md](../satellite/README.md))
+- [ ] Поставить Music Assistant, подключить колонку как плеер, проверить «включи песню» через штатный пайплайн
 - [ ] Записать 50 команд (2–3 голоса, тишина + ТВ), заполнить `bench/commands.csv`
 - [ ] `bench/run_wer.py`: WER/CER + латентность для штатного Whisper
 - [ ] Каркас: `uv` workspace, ruff, mypy, pytest, GitHub Actions
