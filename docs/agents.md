@@ -31,55 +31,50 @@ Debian на железе (хост)
 
 ```mermaid
 flowchart LR
-  subgraph R["Комнаты"]
-    SAT["Колонки ReSpeaker<br/>имя на плате"]
-    MIC["Микрофон у ТВ"]
-    DEV["Устройства HA"]
-    CAM["Камеры"]
-    TV["ТВ"]
+  subgraph HOME["Дома · сервер"]
+    YOU(("Человек"))
+    EARS(["Уши и голос<br/>микрофоны · STT · TTS"])
+    BRAIN(("Ассистент<br/>bayun-brain"))
+    MEM[("Память<br/>люди · привычки · дневник")]
+    HA{{"Дом<br/>HA: устройства, камеры"}}
+    HELP["Помощники<br/>исполнители · наблюдатель"]
+    TV[/"ТВ<br/>экран агентов"/]
+    GW>"Шлюз<br/>без имён · журнал · лимит"]
   end
-  subgraph L["Сервер"]
-    VOICE["Голосовой цикл<br/>имя · VAD · перебивание"]
-    STT["STT GigaAM"]
-    TTS["TTS"]
-    HA["Home Assistant"]
-    POL["policy"]
-    BRAIN(["Ассистент<br/>bayun-brain"])
-    MEM[("Память")]
-    OBS["Наблюдатель"]
-    WRK["Исполнители"]
-    DESK["Рабочие столы<br/>и пульт агентов"]
-    FRG["Frigate"]
-    GW{{"Шлюз<br/>bayun-gateway"}}
-  end
-  CL["Облачная LLM"]
+  CL(["Облачная LLM"])
 
-  SAT -->|"звук после имени"| HA
-  MIC -->|"звук"| VOICE
-  HA -->|"звук"| STT
-  VOICE -->|"поток"| STT
-  STT -->|"текст"| HA
-  STT -->|"текст"| BRAIN
-  HA -->|"не понял"| BRAIN
-  HA --> DEV
-  BRAIN <-->|"факты, дневник"| MEM
-  BRAIN -->|"действие"| POL
-  POL -->|"разрешено"| HA
-  BRAIN -->|"задача"| WRK
-  WRK -->|"результат"| BRAIN
-  WRK -->|"мышь, клавиатура"| DESK
-  DESK -->|"HDMI"| TV
-  HA -->|"события"| OBS
-  CAM --> FRG
-  FRG -->|"события"| OBS
-  OBS -->|"повод"| BRAIN
-  BRAIN -->|"ответ по фразам"| TTS
-  TTS --> SAT
-  TTS --> VOICE
+  YOU <-->|"голос"| EARS
+  EARS -->|"текст"| BRAIN
+  BRAIN -->|"ответ"| EARS
+  EARS -.->|"простые команды сразу"| HA
+  BRAIN <-->|"помнит"| MEM
+  BRAIN -->|"действия через policy"| HA
+  HA -->|"события"| HELP
+  BRAIN <-->|"задача, результат"| HELP
+  HELP -->|"мышь, клавиатура"| TV
   BRAIN --> GW
-  WRK --> GW
+  HELP --> GW
   GW -.->|"текст без имён"| CL
+
+  classDef brain fill:#fbecd0,stroke:#d48a12,stroke-width:3px,color:#1b2030
+  classDef io fill:#d6efee,stroke:#1f8a8a,color:#1b2030
+  classDef home fill:#dcefd9,stroke:#3c8a3f,color:#1b2030
+  classDef help fill:#e9e1f8,stroke:#7a55c7,color:#1b2030
+  classDef mem fill:#dbe6f5,stroke:#3e6fb0,color:#1b2030
+  classDef guard fill:#f7dcd7,stroke:#c2412f,color:#1b2030
+  classDef cloud fill:#e3e4f7,stroke:#5a5fc0,stroke-dasharray:5 4,color:#1b2030
+  classDef you fill:#e6e8ee,stroke:#1b2030,color:#1b2030
+  class BRAIN brain
+  class EARS,TV io
+  class HA home
+  class HELP help
+  class MEM mem
+  class GW guard
+  class CL cloud
+  class YOU you
 ```
+
+Цвет и форма — по роли: круг думает и говорит, капсула — уши и голос, шестиугольник — дом, цилиндр — память, флажок — охрана на выходе, пунктир — облако. Простые команды идут в дом сразу, без облака; всё, что уходит наружу, проходит через шлюз.
 
 ## Одна личность и слои вокруг неё
 
