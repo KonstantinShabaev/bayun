@@ -51,6 +51,7 @@ Piper-ru (TTS) ◄────────────────────�
 | [`custom_components/bayun/`](custom_components/bayun/) | тонкий conversation agent для HA (HACS) |
 | [`satellite/`](satellite/) | колонка на ReSpeaker Lite (ESPHome): железо, прошивка, пайплайн |
 | [`addons/`](addons/) | обёртки HA add-on |
+| [`deploy/server/`](deploy/server/) | установка на домашний сервер: compose, шлюз, ВМ с HA |
 | [`bench/`](bench/) | датасет команд и замеры WER / латентности |
 | [`docs/`](docs/) | спецификация, план, идеи, железо, продвижение |
 
@@ -61,6 +62,7 @@ Piper-ru (TTS) ◄────────────────────�
 - [Идеи и уточнения к спецификации](docs/IDEAS.md)
 - [Домашний сервер](docs/hardware.md): железо для разработки и настройка 24/7
 - [Архитектура](docs/architecture.md): сервер и голосовой тракт от колонки до ответа
+- [Установка на сервер](deploy/server/README.md): по шагам, от чистого Debian до голоса
 - [План продвижения](docs/PROMO_PLAN.md)
 
 ## Стек

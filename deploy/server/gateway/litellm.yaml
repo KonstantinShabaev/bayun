@@ -1,0 +1,20 @@
+# bayun-gateway: единственный выход Баюна в облако (LiteLLM proxy).
+# Модель меняется здесь одной строкой, brain знает только имена bayun-*.
+model_list:
+  - model_name: bayun-main          # разговор, советы, решения
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: bayun-fast          # простые запросы, ночной дневник
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  # Общий лимит трат на старте: $1 в сутки. Сверить с журналом через неделю.
+  max_budget: 1.0
+  budget_duration: 1d
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
