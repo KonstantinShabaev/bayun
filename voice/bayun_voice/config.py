@@ -29,6 +29,10 @@ class SttConfig(BaseModel):
 
 class TtsConfig(BaseModel):
     voice: Path = Path("voices/ru_RU-dmitri-medium.onnx")
+    # Язык фонем вместо родного языка голоса: "ru" для китайского голоса даёт акцент.
+    phonemes: str | None = None
+    # Темп: больше 1 — медленнее.
+    length_scale: float | None = None
 
 
 class BrainConfig(BaseModel):
