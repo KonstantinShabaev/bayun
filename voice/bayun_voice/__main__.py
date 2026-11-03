@@ -70,7 +70,8 @@ class VoiceLoop:
         turn = Turn()
         timeout = self.config.listen.start_timeout_s
         while True:
-            self.say_raw(beep(self.tts.rate))
+            if self.config.listen.beep and timeout == self.config.listen.start_timeout_s:
+                self.say_raw(beep(self.tts.rate, volume=0.1))
             pcm = self.record(timeout)
             if pcm is None:
                 break

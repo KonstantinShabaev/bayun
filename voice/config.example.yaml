@@ -14,6 +14,7 @@ listen:
   silence_s: 0.8            # пауза, после которой фраза считается законченной
   max_s: 12.0
   follow_up_s: 5.0          # ждать продолжения разговора без имени; 0 — не ждать
+  beep: false               # тихий сигнал «слушаю» после имени
 
 stt:
   engine: "onnx-gigaam-v3-e2e-ctc"   # или whisper-small (extra whisper), dummy

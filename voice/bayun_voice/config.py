@@ -21,6 +21,9 @@ class ListenConfig(BaseModel):
     silence_s: float = 0.8
     max_s: float = 12.0
     follow_up_s: float = 5.0
+    # Тихий сигнал «слушаю» после имени. По умолчанию выключен: раздражает,
+    # а что Баюн слушает, видно на странице состояния.
+    beep: bool = False
 
 
 class SttConfig(BaseModel):
