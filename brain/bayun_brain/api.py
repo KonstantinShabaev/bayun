@@ -1,13 +1,23 @@
-"""HTTP API: /converse, /speaker-hint, /health (см. docs/PROJECT_SPEC.md, §4.2)."""
+"""HTTP API: /converse, /converse/stream, /speaker-hint, /health (docs/PROJECT_SPEC.md, §4.2)."""
 
+import json
+import logging
 import time
+import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import __version__
 from .config import Config
+from .llm import SYSTEM_PROMPT, ChatModel, Conversations, reply_sentences
+
+_LOGGER = logging.getLogger(__name__)
+
+OFFLINE_SPEECH = "Облако сейчас недоступно, попробуй чуть позже."
 
 
 class ConverseRequest(BaseModel):
@@ -20,6 +30,7 @@ class ConverseRequest(BaseModel):
 class ConverseResponse(BaseModel):
     speech: str
     continue_conversation: bool = False
+    conversation_id: str | None = None
 
 
 class SpeakerHint(BaseModel):
@@ -47,10 +58,38 @@ class HintStore:
         return hint.speaker
 
 
-def create_app(config: Config | None = None) -> FastAPI:
+def create_app(config: Config | None = None, chat: ChatModel | None = None) -> FastAPI:
+    """`chat=None` — заглушка без LLM (тесты, стенд без ключа)."""
     config = config or Config()
     app = FastAPI(title="bayun-brain", version=__version__)
     hints = HintStore(window_s=config.speaker_hint_window_s)
+    conversations = Conversations(config.assistant.history_turns)
+
+    async def sentences(request: ConverseRequest, conversation_id: str) -> AsyncIterator[str]:
+        speaker = hints.speaker_for(time.time())
+        if chat is None:
+            name = "" if speaker == "guest" else f"{speaker}, "
+            yield f"{name}я пока учусь и ещё ничего не умею."
+            return
+
+        system = SYSTEM_PROMPT.format(name=config.assistant.name)
+        if speaker != "guest":
+            system += f"\nСейчас говорит: {speaker}."
+        messages = conversations.messages(conversation_id, system, request.text)
+        said: list[str] = []
+        started = time.monotonic()
+        try:
+            async for sentence in reply_sentences(chat, messages):
+                if not said:
+                    _LOGGER.info("Первая фраза через %.2f с", time.monotonic() - started)
+                said.append(sentence)
+                yield sentence
+        except Exception:
+            _LOGGER.exception("LLM не ответила")
+            if not said:
+                yield OFFLINE_SPEECH
+            return
+        conversations.remember(conversation_id, request.text, " ".join(said))
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -63,9 +102,29 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.post("/converse")
     async def converse(request: ConverseRequest) -> ConverseResponse:
-        # Агент появится в этапе M2. Пока честно говорим, что ничего не умеем.
-        speaker = hints.speaker_for(time.time())
-        name = "" if speaker == "guest" else f"{speaker}, "
-        return ConverseResponse(speech=f"{name}я пока учусь и ещё ничего не умею.")
+        conversation_id = request.conversation_id or uuid.uuid4().hex
+        speech = " ".join([s async for s in sentences(request, conversation_id)])
+        return ConverseResponse(
+            speech=speech,
+            continue_conversation=chat is not None,
+            conversation_id=conversation_id,
+        )
+
+    @app.post("/converse/stream")
+    async def converse_stream(request: ConverseRequest) -> StreamingResponse:
+        """NDJSON: по строке {"speech": ...} на предложение, в конце {"done": true, ...}."""
+        conversation_id = request.conversation_id or uuid.uuid4().hex
+
+        async def lines() -> AsyncIterator[str]:
+            async for sentence in sentences(request, conversation_id):
+                yield json.dumps({"speech": sentence}, ensure_ascii=False) + "\n"
+            done = {
+                "done": True,
+                "conversation_id": conversation_id,
+                "continue_conversation": chat is not None,
+            }
+            yield json.dumps(done) + "\n"
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     return app

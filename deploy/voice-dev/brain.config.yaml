@@ -1,0 +1,11 @@
+# Черновой стенд: brain ходит в Anthropic напрямую, пока нет шлюза (deploy/server, этап 4).
+# Ключ — в ~/.config/bayun/brain.env: ANTHROPIC_API_KEY=...
+llm:
+  main: "anthropic/claude-sonnet-5-5"
+  max_tokens: 400
+  timeout_s: 20
+
+assistant:
+  name: "Волтер"
+
+database: "bayun.db"

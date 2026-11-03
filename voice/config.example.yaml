@@ -1,0 +1,28 @@
+# Скопируйте в config.yaml рядом с запуском: bayun-voice --config config.yaml
+audio:
+  input_device: null        # null — источник по умолчанию в PipeWire (pactl get-default-source)
+  output_device: null       # null — выход по умолчанию
+
+wake:
+  # Своей модели «Волтер» ещё нет: пока стандартная английская «hey jarvis».
+  model: "hey_jarvis"       # имя встроенной модели openWakeWord или путь к .onnx
+  threshold: 0.5
+
+listen:
+  start_timeout_s: 4.0      # сколько ждать начала фразы после имени
+  silence_s: 0.8            # пауза, после которой фраза считается законченной
+  max_s: 12.0
+  follow_up_s: 5.0          # ждать продолжения разговора без имени; 0 — не ждать
+
+stt:
+  engine: "whisper-small"   # dummy, whisper-<размер>; GigaAM — в M1
+
+tts:
+  voice: "voices/ru_RU-dmitri-medium.onnx"
+
+brain:
+  url: "http://127.0.0.1:8765"
+
+status:
+  host: "0.0.0.0"           # страница состояния: http://<сервер>:8770
+  port: 8770

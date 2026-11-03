@@ -2,6 +2,6 @@ FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 COPY brain/ ./brain/
-RUN uv pip install --system ./brain
+RUN uv pip install --system "./brain[llm]"
 EXPOSE 8765
 CMD ["bayun-brain", "--host", "0.0.0.0", "--port", "8765"]

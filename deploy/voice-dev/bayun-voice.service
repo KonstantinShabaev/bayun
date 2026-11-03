@@ -1,0 +1,15 @@
+# Сервис пользователя: ~/.config/systemd/user/bayun-voice.service
+# Живёт в сессии пользователя, потому что звук (PipeWire) тоже там.
+[Unit]
+Description=Баюн: голосовой цикл (микрофон → STT → brain → Piper)
+After=pipewire.service pipewire-pulse.service bayun-brain.service
+Wants=bayun-brain.service
+
+[Service]
+WorkingDirectory=%h/bayun
+ExecStart=%h/.local/bin/uv run --no-sync bayun-voice --config voice/config.yaml
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

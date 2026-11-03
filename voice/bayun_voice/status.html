@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Баюн</title>
+<style>
+  :root { --bg: #111418; --fg: #e8e6e3; --muted: #8a8f98; --idle: #3a3f47;
+          --listening: #3fa7ff; --thinking: #e8b33f; --speaking: #4fd18b; --error: #ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 22px/1.4 system-ui, sans-serif; height: 100vh; display: grid;
+         grid-template-columns: minmax(280px, 1fr) 2fr; gap: 32px; padding: 32px; }
+  .left { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+  .orb { width: 220px; height: 220px; border-radius: 50%; background: var(--idle);
+         transition: background .2s, transform .2s; }
+  .orb.listening { background: var(--listening); animation: pulse 1s infinite; }
+  .orb.thinking { background: var(--thinking); animation: pulse 0.6s infinite; }
+  .orb.speaking { background: var(--speaking); }
+  .orb.error { background: var(--error); }
+  @keyframes pulse { 50% { transform: scale(1.07); } }
+  .phase { font-size: 34px; }
+  button { font: inherit; font-size: 28px; padding: 18px 40px; border-radius: 16px; border: 0;
+           background: #2b3a4d; color: var(--fg); cursor: pointer; }
+  button:active { background: #3fa7ff; }
+  .hint { color: var(--muted); font-size: 18px; text-align: center; }
+  .log { overflow: auto; display: flex; flex-direction: column; gap: 14px; justify-content: flex-end; }
+  .msg { max-width: 90%; padding: 14px 20px; border-radius: 18px; }
+  .user { align-self: flex-end; background: #2b3a4d; }
+  .bayun { align-self: flex-start; background: #1f3328; }
+  .system { align-self: center; color: var(--muted); font-size: 18px; }
+  .timings { color: var(--muted); font-size: 16px; text-align: center; min-height: 1.4em; }
+  @media (max-width: 800px) { body { grid-template-columns: 1fr; height: auto; }
+                              .orb { width: 140px; height: 140px; } }
+</style>
+</head>
+<body>
+<div class="left">
+  <div id="orb" class="orb"></div>
+  <div id="phase" class="phase">…</div>
+  <button id="talk">Говорить</button>
+  <div id="wake" class="hint"></div>
+  <div id="timings" class="timings"></div>
+</div>
+<div id="log" class="log"></div>
+<script>
+const PHASES = { idle: "Жду имени", listening: "Слушаю", thinking: "Думаю",
+                 speaking: "Говорю", error: "Ошибка", loading: "Загружаю модели" };
+const orb = document.getElementById("orb"), phase = document.getElementById("phase");
+const log = document.getElementById("log"), timings = document.getElementById("timings");
+const wake = document.getElementById("wake");
+document.getElementById("talk").onclick = () => fetch("talk", { method: "POST" });
+function render(s) {
+  orb.className = "orb " + s.phase;
+  phase.textContent = PHASES[s.phase] || s.phase;
+  wake.textContent = s.wake_word ? `Скажите «${s.wake_word}» или нажмите кнопку` : "";
+  const t = s.timings || {};
+  const parts = [];
+  if (t.stt_s != null) parts.push(`распознавание ${t.stt_s.toFixed(2)} с`);
+  if (t.first_s != null) parts.push(`первая фраза ${t.first_s.toFixed(2)} с`);
+  timings.textContent = parts.join(" · ");
+  log.replaceChildren(...s.log.map(m => {
+    const d = document.createElement("div");
+    d.className = "msg " + m.who; d.textContent = m.text; return d;
+  }));
+  log.scrollTop = log.scrollHeight;
+}
+function connect() {
+  const es = new EventSource("events");
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+}
+connect();
+</script>
+</body>
+</html>

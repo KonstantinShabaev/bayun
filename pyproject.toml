@@ -2,26 +2,34 @@
 name = "bayun"
 version = "0.0.0"
 description = "Баюн: русский голос и агентный «мозг» для Home Assistant"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 readme = "README.md"
 license = "Apache-2.0"
 
 [tool.uv]
 package = false
+# openWakeWord тянет tflite-runtime, у которого нет колёс под Python 3.12.
+# Мы используем его ONNX-модели, tflite не нужен.
+override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
+environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
+# gigaam прибит к старому onnxruntime под NumPy 1.x, голосовому циклу нужен свежий.
+conflicts = [[{ package = "bayun-stt", extra = "gigaam" }, { package = "bayun-voice", extra = "local" }]]
 
 [tool.uv.workspace]
-members = ["stt", "brain", "bench"]
+members = ["stt", "brain", "bench", "voice"]
 
 [tool.uv.sources]
 bayun-stt = { workspace = true }
 bayun-brain = { workspace = true }
 bayun-bench = { workspace = true }
+bayun-voice = { workspace = true }
 
 [dependency-groups]
 dev = [
     "bayun-stt",
     "bayun-brain",
     "bayun-bench",
+    "bayun-voice",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8",
@@ -43,13 +51,20 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["bayun_stt", "bayun_brain", "bayun_bench"]
-mypy_path = ["stt", "brain", "bench"]
+packages = ["bayun_stt", "bayun_brain", "bayun_bench", "bayun_voice"]
+mypy_path = ["stt", "brain", "bench", "voice"]
 
 [[tool.mypy.overrides]]
-module = ["wyoming.*", "jiwer.*"]
+module = [
+    "wyoming.*",
+    "jiwer.*",
+    "faster_whisper.*",
+    "litellm.*",
+    "openwakeword.*",
+    "piper.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["stt/tests", "brain/tests", "bench/tests"]
+testpaths = ["stt/tests", "brain/tests", "bench/tests", "voice/tests"]
 asyncio_mode = "auto"

@@ -1,0 +1,6 @@
+# Автозапуск страницы состояния на экране: ~/.config/autostart/bayun-status.desktop
+[Desktop Entry]
+Type=Application
+Name=Баюн
+Exec=firefox --new-window http://127.0.0.1:8770
+X-KDE-autostart-after=panel

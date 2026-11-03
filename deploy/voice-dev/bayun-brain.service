@@ -1,0 +1,13 @@
+# Сервис пользователя: ~/.config/systemd/user/bayun-brain.service
+[Unit]
+Description=Баюн: brain (черновой стенд на сервере)
+
+[Service]
+WorkingDirectory=%h/bayun
+# ANTHROPIC_API_KEY или ключ шлюза. Файл с правами 600, в git не попадает.
+EnvironmentFile=-%h/.config/bayun/brain.env
+ExecStart=%h/.local/bin/uv run --no-sync bayun-brain --config brain/config.yaml --host 127.0.0.1
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
