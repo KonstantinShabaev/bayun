@@ -38,8 +38,11 @@ class ElevenLabsConfig(BaseModel):
 
 
 class TtsConfig(BaseModel):
-    # piper — локально; elevenlabs — облако с эмоциями и смехом, наружу уходит только текст ответа.
+    # piper, silero — локально; elevenlabs — облако с эмоциями и смехом,
+    # наружу уходит только текст ответа.
     engine: str = "piper"
+    # Диктор Silero: aidar, eugene (мужские), baya, kseniya, xenia (женские).
+    speaker: str = "eugene"
     elevenlabs: ElevenLabsConfig = ElevenLabsConfig()
     voice: Path = Path("voices/ru_RU-dmitri-medium.onnx")
     # Язык фонем вместо родного языка голоса: "ru" для китайского голоса даёт акцент.

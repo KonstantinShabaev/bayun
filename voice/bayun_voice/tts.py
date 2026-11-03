@@ -1,4 +1,4 @@
-"""Озвучка по предложению за раз: Piper локально или ElevenLabs в облаке."""
+"""Озвучка по предложению за раз: Piper или Silero локально, ElevenLabs в облаке."""
 
 import os
 import re
@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from .accent import ACCENTS
+from .accent import ACCENTS, TEXT_ACCENTS
 from .config import TtsConfig
 
 _AUDIO_TAG = re.compile(r"\[[^\]]{1,30}\]\s*")
@@ -87,6 +87,37 @@ class ElevenLabsTts:
         return response.content
 
 
+class SileroTts:
+    """Silero v5: русский, сам ставит ударения, ~0,05 с на секунду речи на CPU.
+    Лицензия CC BY-NC: только некоммерческое использование."""
+
+    rate = 24000
+    audio_tags = False
+
+    def __init__(self, speaker: str, accent: str | None = None, threads: int = 4) -> None:
+        import torch
+        from silero import silero_tts
+
+        torch.set_num_threads(threads)
+        self._model: Any
+        self._model, _ = silero_tts(language="ru", speaker="v5_ru")
+        if speaker not in self._model.speakers:
+            raise ValueError(f"Нет диктора {speaker!r}. Есть: {self._model.speakers}")
+        self.speaker = speaker
+        self._accent = TEXT_ACCENTS[accent] if accent else None
+
+    def synthesize(self, text: str) -> bytes:
+        import numpy as np
+
+        text = strip_audio_tags(text)
+        if self._accent:
+            text = self._accent(text)
+        if not text:
+            return b""
+        audio = self._model.apply_tts(text=text, speaker=self.speaker, sample_rate=self.rate)
+        return bytes((audio.numpy() * 32767).astype(np.int16).tobytes())
+
+
 def load_tts(config: TtsConfig) -> Tts:
     if config.engine == "elevenlabs":
         el = config.elevenlabs
@@ -95,4 +126,8 @@ def load_tts(config: TtsConfig) -> Tts:
         )
     if config.engine == "piper":
         return PiperTts(config.voice, config.phonemes, config.length_scale, config.accent)
-    raise ValueError(f"Неизвестный движок TTS: {config.engine!r}. Доступно: piper, elevenlabs")
+    if config.engine == "silero":
+        return SileroTts(config.speaker, config.accent)
+    raise ValueError(
+        f"Неизвестный движок TTS: {config.engine!r}. Доступно: piper, silero, elevenlabs"
+    )

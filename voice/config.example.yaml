@@ -20,7 +20,8 @@ stt:
   engine: "onnx-gigaam-v3-e2e-ctc"   # или whisper-small (extra whisper), dummy
 
 tts:
-  engine: "piper"           # piper локально; elevenlabs — смех и эмоции в облаке
+  engine: "piper"           # piper, silero (живее, extra silero) локально; elevenlabs — облако
+  speaker: "eugene"         # диктор Silero: aidar, eugene, baya, kseniya, xenia
   elevenlabs:               # ключ в переменной ELEVENLABS_API_KEY
     voice_id: ""            # голос из библиотеки ElevenLabs, который хорошо говорит по-русски
     model: "eleven_v3"

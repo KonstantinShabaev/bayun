@@ -21,6 +21,13 @@ bayun-stt = { workspace = true }
 bayun-brain = { workspace = true }
 bayun-bench = { workspace = true }
 bayun-voice = { workspace = true }
+# torch для Silero: CPU-сборка, без CUDA на гигабайты.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [
@@ -58,6 +65,8 @@ module = [
     "jiwer.*",
     "faster_whisper.*",
     "onnx_asr.*",
+    "silero.*",
+    "torch.*",
     "litellm.*",
     "openwakeword.*",
     "piper.*",

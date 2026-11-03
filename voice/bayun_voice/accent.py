@@ -8,6 +8,7 @@
 Голос лучше русский: китайский голос с русскими фонемами звучит как китайская речь.
 """
 
+import re
 from collections.abc import Callable
 
 Phonemes = list[str]
@@ -90,4 +91,25 @@ ACCENTS: dict[str, Callable[[Phonemes], Phonemes]] = {
     "zh": zh_accent,
     "zh-strong": zh_strong_accent,
     "zh-max": zh_max_accent,
+}
+
+
+# Для движков, которые берут текст, а не фонемы (Silero): те же замены буквами.
+_ZH_TEXT = str.maketrans("рРыжЖзЗ", "лЛишШсС")
+_WORD_END = re.compile(r"([бвгдзклмпрстфхцчшщ])\b", flags=re.IGNORECASE)
+
+
+def zh_text_accent(text: str) -> str:
+    return text.translate(_ZH_TEXT)
+
+
+def zh_strong_text_accent(text: str) -> str:
+    """Плюс «э» после согласной в конце слова: «привет» → «пливетэ»."""
+    return _WORD_END.sub(r"\1э", zh_text_accent(text))
+
+
+TEXT_ACCENTS: dict[str, Callable[[str], str]] = {
+    "zh": zh_text_accent,
+    "zh-strong": zh_strong_text_accent,
+    "zh-max": zh_strong_text_accent,
 }

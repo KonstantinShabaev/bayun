@@ -20,6 +20,9 @@ local = [
     "bayun-stt[onnx]",
 ]
 
+# Silero v5 тянет torch: ставится отдельно, CPU-сборка с download.pytorch.org.
+silero = ["silero>=0.5", "torch>=2.4", "scipy", "omegaconf"]
+
 [project.scripts]
 bayun-voice = "bayun_voice.__main__:run"
 

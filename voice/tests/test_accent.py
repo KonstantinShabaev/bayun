@@ -20,3 +20,10 @@ def test_zh_strong_accent_adds_final_vowel() -> None:
     # «спорь со» → «сполʲə со»
     phonemes = ["s", "p", "ˈ", "o", "r", "ʲ", " ", "s", "ə"]
     assert "".join(zh_strong_accent(phonemes)) == "spˈolʲə sə"
+
+
+def test_text_accents_for_silero() -> None:
+    from bayun_voice.accent import zh_strong_text_accent, zh_text_accent
+
+    assert zh_text_accent("Привет, Жора!") == "Пливет, Шола!"
+    assert zh_strong_text_accent("Привет, мир") == "Пливетэ, милэ"
