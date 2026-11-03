@@ -11,7 +11,6 @@ cp voice/config.example.yaml voice/config.yaml
 cp deploy/voice-dev/brain.config.yaml brain/config.yaml
 install -D -m 600 /dev/null ~/.config/bayun/brain.env   # ANTHROPIC_API_KEY=...
 cp deploy/voice-dev/*.service ~/.config/systemd/user/
-cp deploy/voice-dev/bayun-status.desktop ~/.config/autostart/
 systemctl --user daemon-reload
 systemctl --user enable --now bayun-brain bayun-voice
 journalctl --user -fu bayun-voice

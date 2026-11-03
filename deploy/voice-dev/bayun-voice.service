@@ -7,6 +7,8 @@ Wants=bayun-brain.service
 
 [Service]
 WorkingDirectory=%h/bayun
+# ELEVENLABS_API_KEY / YANDEX_API_KEY для облачной озвучки.
+EnvironmentFile=-%h/.config/bayun/voice.env
 ExecStart=%h/.local/bin/uv run --no-sync bayun-voice --config voice/config.yaml
 Restart=on-failure
 RestartSec=3
