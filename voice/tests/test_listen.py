@@ -47,3 +47,9 @@ def test_energy_vad_tells_voice_from_hum() -> None:
         assert vad(hum) == 0.0
     voice = np.frombuffer(beep(16000, duration_s=FRAME_S, volume=0.5), dtype=np.int16)
     assert vad(voice[:FRAME_SAMPLES]) == 1.0
+
+
+def test_strip_audio_tags() -> None:
+    from bayun_voice.tts import strip_audio_tags
+
+    assert strip_audio_tags("[laughs] Ну ты даёшь. [sighs]") == "Ну ты даёшь."

@@ -59,3 +59,12 @@ def test_history_is_kept_within_conversation() -> None:
 def test_llm_failure_gives_offline_phrase() -> None:
     client = TestClient(create_app(Config(), FakeChat([], fail=True)))
     assert client.post("/converse", json={"text": "привет"}).json()["speech"] == OFFLINE_SPEECH
+
+
+def test_audio_tags_prompt_only_when_asked() -> None:
+    chat = FakeChat(["Ха."])
+    client = TestClient(create_app(Config(), chat))
+    client.post("/converse", json={"text": "шутка"})
+    client.post("/converse", json={"text": "шутка", "audio_tags": True})
+    assert "[laughs]" not in chat.seen[0][0]["content"]
+    assert "[laughs]" in chat.seen[1][0]["content"]

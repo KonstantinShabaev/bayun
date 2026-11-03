@@ -27,7 +27,17 @@ class SttConfig(BaseModel):
     engine: str = "whisper-small"
 
 
+class ElevenLabsConfig(BaseModel):
+    # Ключ — в переменной ELEVENLABS_API_KEY, не в конфиге.
+    voice_id: str = ""
+    model: str = "eleven_v3"
+    url: str = "https://api.elevenlabs.io"
+
+
 class TtsConfig(BaseModel):
+    # piper — локально; elevenlabs — облако с эмоциями и смехом, наружу уходит только текст ответа.
+    engine: str = "piper"
+    elevenlabs: ElevenLabsConfig = ElevenLabsConfig()
     voice: Path = Path("voices/ru_RU-dmitri-medium.onnx")
     # Язык фонем вместо родного языка голоса: "ru" для китайского голоса даёт акцент.
     phonemes: str | None = None

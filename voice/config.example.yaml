@@ -19,6 +19,10 @@ stt:
   engine: "whisper-small"   # dummy, whisper-<размер>; GigaAM — в M1
 
 tts:
+  engine: "piper"           # piper локально; elevenlabs — смех и эмоции в облаке
+  elevenlabs:               # ключ в переменной ELEVENLABS_API_KEY
+    voice_id: ""            # голос из библиотеки ElevenLabs, который хорошо говорит по-русски
+    model: "eleven_v3"
   voice: "voices/ru_RU-dmitri-medium.onnx"
   phonemes: null            # язык фонем вместо родного языка голоса
   length_scale: null        # темп, больше 1 — медленнее

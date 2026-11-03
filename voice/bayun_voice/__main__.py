@@ -17,7 +17,7 @@ from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
 from .status import Status, serve
-from .tts import PiperTts
+from .tts import load_tts, strip_audio_tags
 from .wake import OpenWakeWord
 
 _LOGGER = logging.getLogger("bayun_voice")
@@ -33,9 +33,7 @@ class VoiceLoop:
         self.wake = OpenWakeWord(config.wake.model)
         self.vad: SpeechDetector = load_vad()
         self.asr = load_engine(config.stt.engine)
-        self.tts = PiperTts(
-            config.tts.voice, config.tts.phonemes, config.tts.length_scale, config.tts.accent
-        )
+        self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
         _LOGGER.info(
@@ -43,7 +41,7 @@ class VoiceLoop:
             self.wake.name,
             self.vad.name,
             self.asr.name,
-            config.tts.voice.stem,
+            config.tts.engine if config.tts.engine != "piper" else config.tts.voice.stem,
         )
 
     def run(self) -> None:
@@ -117,7 +115,7 @@ class VoiceLoop:
         started = time.monotonic()
         playback: Playback | None = None
         try:
-            for sentence in self.brain.converse(text, turn):
+            for sentence in self.brain.converse(text, turn, self.tts.audio_tags):
                 if playback is None:
                     first_s = time.monotonic() - started
                     _LOGGER.info("Первая фраза от brain через %.2f с", first_s)
@@ -126,7 +124,7 @@ class VoiceLoop:
                         timings={**self.status.state["timings"], "first_s": first_s},
                     )
                     playback = Playback(self.tts.rate, self.config.audio.output_device)
-                self.status.log("bayun", sentence)
+                self.status.log("bayun", strip_audio_tags(sentence))
                 playback.write(self.tts.synthesize(sentence))
         except Exception:
             _LOGGER.exception("brain не ответил")

@@ -19,9 +19,14 @@ class BrainClient:
     ) -> None:
         self._client = httpx.Client(base_url=url, timeout=timeout_s, transport=transport)
 
-    def converse(self, text: str, turn: Turn) -> Iterator[str]:
+    def converse(self, text: str, turn: Turn, audio_tags: bool = False) -> Iterator[str]:
         """Отдаёт предложения по мере готовности и обновляет `turn` в конце."""
-        body = {"text": text, "conversation_id": turn.conversation_id, "device_id": "server"}
+        body = {
+            "text": text,
+            "conversation_id": turn.conversation_id,
+            "device_id": "server",
+            "audio_tags": audio_tags,
+        }
         with self._client.stream("POST", "/converse/stream", json=body) as response:
             response.raise_for_status()
             for line in response.iter_lines():

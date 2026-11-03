@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from . import __version__
 from .config import Config
-from .llm import SYSTEM_PROMPT, ChatModel, Conversations, reply_sentences
+from .llm import AUDIO_TAGS_PROMPT, SYSTEM_PROMPT, ChatModel, Conversations, reply_sentences
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +25,8 @@ class ConverseRequest(BaseModel):
     conversation_id: str | None = None
     device_id: str | None = None
     language: str = "ru"
+    # Голос понимает теги эмоций вроде [laughs].
+    audio_tags: bool = False
 
 
 class ConverseResponse(BaseModel):
@@ -73,6 +75,8 @@ def create_app(config: Config | None = None, chat: ChatModel | None = None) -> F
             return
 
         system = SYSTEM_PROMPT.format(name=config.assistant.name)
+        if request.audio_tags:
+            system += AUDIO_TAGS_PROMPT
         if speaker != "guest":
             system += f"\nСейчас говорит: {speaker}."
         messages = conversations.messages(conversation_id, system, request.text)
