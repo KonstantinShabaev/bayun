@@ -1,0 +1,12 @@
+# Конфиг bayun-brain на сервере. host-setup.sh копирует его в ${BAYUN_DATA}/brain/config.yaml.
+llm:
+  main: "litellm_proxy/bayun-main"      # имя модели в шлюзе, не у провайдера
+  vision: null
+  api_base: "http://bayun-gateway:4000"
+
+home_assistant:
+  url: "http://192.168.122.X:8123"      # адрес ВМ haos (virsh domifaddr haos); с мостом — её адрес в сети
+  token: ""                             # long-lived token пользователя HA «bayun»
+
+database: "/data/bayun.db"
+speaker_hint_window_s: 3.0

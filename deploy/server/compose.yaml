@@ -1,0 +1,80 @@
+# Баюн на домашнем сервере: голосовые сервисы, шлюз в облако, brain.
+# Home Assistant живёт отдельно, в ВМ (см. README.md).
+#
+#   docker compose up -d                      # голос: Whisper, Piper, openWakeWord
+#   docker compose --profile brain up -d      # + шлюз и bayun-brain
+#   docker compose --profile stt up -d        # + bayun-stt (после M1)
+#
+# Данные и модели лежат в ${BAYUN_DATA}, секреты — в .env рядом с этим файлом.
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  # --- Голос на готовых образах (этап 2) -----------------------------------
+  whisper:
+    <<: *restart
+    image: rhasspy/wyoming-whisper:${WHISPER_TAG:-latest}
+    command: --model ${WHISPER_MODEL:-small-int8} --language ru
+    volumes:
+      - ${BAYUN_DATA:-/srv/bayun}/models/whisper:/data
+    ports:
+      - "10300:10300"
+
+  piper:
+    <<: *restart
+    image: rhasspy/wyoming-piper:${PIPER_TAG:-latest}
+    command: --voice ${PIPER_VOICE:-ru_RU-irina-medium}
+    volumes:
+      - ${BAYUN_DATA:-/srv/bayun}/models/piper:/data
+    ports:
+      - "10200:10200"
+
+  openwakeword:
+    <<: *restart
+    image: rhasspy/wyoming-openwakeword:${OWW_TAG:-latest}
+    command: --custom-model-dir /custom
+    volumes:
+      - ${BAYUN_DATA:-/srv/bayun}/models/openwakeword:/custom
+    ports:
+      - "10400:10400"
+
+  # --- Шлюз и brain (этап 4) ------------------------------------------------
+  bayun-gateway:
+    <<: *restart
+    profiles: [brain]
+    image: ghcr.io/berriai/litellm:${LITELLM_TAG:-main-stable}
+    command: --config /app/config.yaml --port 4000
+    env_file: .env
+    volumes:
+      - ./gateway/litellm.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  bayun-brain:
+    <<: *restart
+    profiles: [brain]
+    build:
+      context: ../..
+      dockerfile: brain/Dockerfile
+    command: bayun-brain --config /data/config.yaml --host 0.0.0.0 --port 8765
+    volumes:
+      - ${BAYUN_DATA:-/srv/bayun}/brain:/data
+    working_dir: /data
+    depends_on:
+      - bayun-gateway
+    ports:
+      - "8765:8765"
+
+  # --- Свой STT (этап 5, после M1) ------------------------------------------
+  bayun-stt:
+    <<: *restart
+    profiles: [stt]
+    build:
+      context: ../..
+      dockerfile: stt/Dockerfile
+    command: bayun-stt --uri tcp://0.0.0.0:10300 --engine ${BAYUN_STT_ENGINE:-dummy}
+    volumes:
+      - ${BAYUN_DATA:-/srv/bayun}/models/gigaam:/models
+    ports:
+      - "10301:10300"
