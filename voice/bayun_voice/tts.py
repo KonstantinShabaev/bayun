@@ -3,13 +3,19 @@
 from pathlib import Path
 from typing import Any
 
+from .accent import ACCENTS
+
 
 class PiperTts:
     """`phonemes` подменяет язык espeak голоса: китайский голос с русскими фонемами
     читает по-русски с сильным акцентом. Набор фонем у голосов Piper общий."""
 
     def __init__(
-        self, voice: Path, phonemes: str | None = None, length_scale: float | None = None
+        self,
+        voice: Path,
+        phonemes: str | None = None,
+        length_scale: float | None = None,
+        accent: str | None = None,
     ) -> None:
         from piper import PiperVoice, SynthesisConfig
 
@@ -21,6 +27,10 @@ class PiperTts:
         self._voice: Any = PiperVoice.load(str(voice))
         if phonemes:
             self._voice.config.espeak_voice = phonemes
+        if accent:
+            shift = ACCENTS[accent]
+            phonemize = self._voice.phonemize
+            self._voice.phonemize = lambda text: [shift(s) for s in phonemize(text)]
         self._syn: Any = SynthesisConfig(length_scale=length_scale)
         self.rate: int = self._voice.config.sample_rate
 

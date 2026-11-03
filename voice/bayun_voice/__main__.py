@@ -33,7 +33,9 @@ class VoiceLoop:
         self.wake = OpenWakeWord(config.wake.model)
         self.vad: SpeechDetector = load_vad()
         self.asr = load_engine(config.stt.engine)
-        self.tts = PiperTts(config.tts.voice, config.tts.phonemes, config.tts.length_scale)
+        self.tts = PiperTts(
+            config.tts.voice, config.tts.phonemes, config.tts.length_scale, config.tts.accent
+        )
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
         _LOGGER.info(

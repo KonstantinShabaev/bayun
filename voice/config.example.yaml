@@ -1,7 +1,8 @@
 # Скопируйте в config.yaml рядом с запуском: bayun-voice --config config.yaml
 audio:
   input_device: null        # null — источник по умолчанию в PipeWire (pactl get-default-source)
-  output_device: null       # null — выход по умолчанию
+  output_device: null       # null — выход по умолчанию; лучше указать явно, PipeWire
+                            # после перезагрузки может выбрать выход USB-микрофона
 
 wake:
   # Своей модели «Волтер» ещё нет: пока стандартная английская «hey jarvis».
@@ -25,6 +26,8 @@ tts:
   #   voice: "voices/zh_CN-huayan-medium.onnx"
   #   phonemes: "ru"
   #   length_scale: 1.1     # 1.25 — ещё сильнее, но понятно с трудом
+  #   accent: "zh"          # оооочень сильно: р → л, оглушение, гласные между согласными
+  accent: null
 
 brain:
   url: "http://127.0.0.1:8765"

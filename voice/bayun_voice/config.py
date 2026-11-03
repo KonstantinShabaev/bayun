@@ -33,6 +33,8 @@ class TtsConfig(BaseModel):
     phonemes: str | None = None
     # Темп: больше 1 — медленнее.
     length_scale: float | None = None
+    # Правка фонем перед синтезом: "zh" — очень сильный китайский акцент (accent.py).
+    accent: str | None = None
 
 
 class BrainConfig(BaseModel):
