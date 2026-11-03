@@ -1,4 +1,4 @@
-"""Озвучка по предложению за раз: Piper или Silero локально, ElevenLabs в облаке."""
+"""Озвучка по предложению за раз: Piper или Silero локально, SpeechKit или ElevenLabs в облаке."""
 
 import os
 import re
@@ -118,6 +118,41 @@ class SileroTts:
         return bytes((audio.numpy() * 32767).astype(np.int16).tobytes())
 
 
+class YandexTts:
+    """Yandex SpeechKit, REST API v1: живые русские голоса, эмоции у части голосов.
+    Работает из России без VPN. Наружу уходит только текст ответа."""
+
+    rate = 48000
+    audio_tags = False
+    url = "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize"
+
+    def __init__(self, api_key: str, voice: str, emotion: str | None, speed: float) -> None:
+        if not api_key:
+            raise ValueError("Для SpeechKit нужен YANDEX_API_KEY")
+        self.voice = voice
+        self.emotion = emotion
+        self.speed = speed
+        self._client = httpx.Client(headers={"Authorization": f"Api-Key {api_key}"}, timeout=20)
+
+    def synthesize(self, text: str) -> bytes:
+        text = strip_audio_tags(text)
+        if not text:
+            return b""
+        form = {
+            "text": text,
+            "lang": "ru-RU",
+            "voice": self.voice,
+            "speed": str(self.speed),
+            "format": "lpcm",
+            "sampleRateHertz": str(self.rate),
+        }
+        if self.emotion:
+            form["emotion"] = self.emotion
+        response = self._client.post(self.url, data=form)
+        response.raise_for_status()
+        return response.content
+
+
 class Pronounced:
     """Словарь произношения поверх любого движка: «Волтер» → «Уо+лтэр».
     Заменяется начало слова, окончания остаются: «Волтеру» → «Уо+лтэру».
@@ -155,6 +190,10 @@ def _load_engine(config: TtsConfig) -> Tts:
         return PiperTts(config.voice, config.phonemes, config.length_scale, config.accent)
     if config.engine == "silero":
         return SileroTts(config.speaker, config.accent)
+    if config.engine == "yandex":
+        ya = config.yandex
+        key = os.environ.get("YANDEX_API_KEY", "")
+        return YandexTts(key, ya.voice, ya.emotion, ya.speed)
     raise ValueError(
-        f"Неизвестный движок TTS: {config.engine!r}. Доступно: piper, silero, elevenlabs"
+        f"Неизвестный движок TTS: {config.engine!r}. Доступно: piper, silero, yandex, elevenlabs"
     )

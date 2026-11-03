@@ -37,6 +37,13 @@ class ElevenLabsConfig(BaseModel):
     url: str = "https://api.elevenlabs.io"
 
 
+class YandexConfig(BaseModel):
+    # Ключ — в переменной YANDEX_API_KEY, не в конфиге.
+    voice: str = "filipp"
+    emotion: str | None = None  # good, evil, neutral — не у всех голосов
+    speed: float = 1.0
+
+
 class TtsConfig(BaseModel):
     # piper, silero — локально; elevenlabs — облако с эмоциями и смехом,
     # наружу уходит только текст ответа.
@@ -46,6 +53,7 @@ class TtsConfig(BaseModel):
     # Как произносить слова: {"Волтер": "Уо+лтэр"}. «+» — ударение (Silero).
     pronounce: dict[str, str] = {}
     elevenlabs: ElevenLabsConfig = ElevenLabsConfig()
+    yandex: YandexConfig = YandexConfig()
     voice: Path = Path("voices/ru_RU-dmitri-medium.onnx")
     # Язык фонем вместо родного языка голоса: "ru" для китайского голоса даёт акцент.
     phonemes: str | None = None
