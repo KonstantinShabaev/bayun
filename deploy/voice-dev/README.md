@@ -5,7 +5,7 @@
 
 ```sh
 git clone https://github.com/konstantinshabaev/bayun ~/bayun && cd ~/bayun
-uv sync --all-packages --extra local --extra llm --extra whisper
+uv sync --all-packages --extra local --extra llm --extra whisper   # whisper — только для сравнения
 uv run python -m piper.download_voices --download-dir voices ru_RU-dmitri-medium
 cp voice/config.example.yaml voice/config.yaml
 cp deploy/voice-dev/brain.config.yaml brain/config.yaml

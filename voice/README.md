@@ -3,7 +3,7 @@
 bayun-voice — голосовой цикл прямо на сервере с USB-микрофоном, без Home Assistant:
 
 ```
-микрофон (PipeWire) ─► openWakeWord ─► Silero VAD ─► STT (faster-whisper, потом GigaAM)
+микрофон (PipeWire) ─► openWakeWord ─► Silero VAD ─► STT (GigaAM v3 через onnx-asr)
    ─► bayun-brain /converse/stream ─► Piper по предложениям ─► динамики
 ```
 

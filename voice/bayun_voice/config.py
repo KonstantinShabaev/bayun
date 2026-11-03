@@ -24,7 +24,7 @@ class ListenConfig(BaseModel):
 
 
 class SttConfig(BaseModel):
-    engine: str = "whisper-small"
+    engine: str = "onnx-gigaam-v3-e2e-ctc"
 
 
 class ElevenLabsConfig(BaseModel):

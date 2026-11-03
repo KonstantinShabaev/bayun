@@ -10,9 +10,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Тяжёлые зависимости ставятся отдельно: uv sync --extra gigaam
-gigaam = ["gigaam"]
+# Тяжёлые зависимости ставятся отдельно: uv sync --extra onnx
+# GigaAM идёт через onnx-asr: без torch и без старого onnxruntime пакета gigaam.
 whisper = ["faster-whisper>=1.0"]
+onnx = ["onnx-asr[cpu,hub]>=0.12"]
 
 [project.scripts]
 bayun-stt = "bayun_stt.__main__:run"

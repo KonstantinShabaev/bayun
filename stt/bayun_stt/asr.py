@@ -1,8 +1,9 @@
 """Движки распознавания.
 
 `dummy` — заглушка, чтобы сервер запускался без моделей.
-`whisper-<размер>` — faster-whisper на CPU (extra `whisper`), точка отсчёта до GigaAM.
-GigaAM подключается в этапе M1.
+`whisper-<размер>` — faster-whisper на CPU (extra `whisper`), точка отсчёта.
+`onnx-<модель>` — модели onnx-asr без torch (extra `onnx`), например `onnx-gigaam-v3-e2e-ctc`:
+GigaAM v3 с пунктуацией и цифрами, ~0,25 с на фразу на i7-1185G7 против ~1,5 с у Whisper small.
 """
 
 from typing import Any, Protocol
@@ -52,9 +53,27 @@ class FasterWhisperAsr:
         return " ".join(s.text.strip() for s in segments).strip()
 
 
+class OnnxAsr:
+    """onnx-asr: GigaAM, T-one, Parakeet в ONNX. Модель скачивается с Hugging Face."""
+
+    def __init__(self, model: str) -> None:
+        import onnx_asr
+
+        self.name = model
+        self._model: Any = onnx_asr.load_model(model)
+
+    def transcribe(self, pcm: bytes, rate: int) -> str:
+        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        return str(self._model.recognize(audio, sample_rate=rate)).strip()
+
+
 def load_engine(name: str) -> AsrEngine:
     if name == "dummy":
         return DummyAsr()
     if name.startswith("whisper-"):
         return FasterWhisperAsr(name.removeprefix("whisper-"))
-    raise ValueError(f"Неизвестный движок ASR: {name!r}. Доступно: dummy, whisper-<размер>")
+    if name.startswith("onnx-"):
+        return OnnxAsr(name.removeprefix("onnx-"))
+    raise ValueError(
+        f"Неизвестный движок ASR: {name!r}. Доступно: dummy, whisper-<размер>, onnx-<модель>"
+    )

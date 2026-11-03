@@ -55,6 +55,7 @@ class VoiceLoop:
         while True:
             if self.status.talk.is_set():
                 self.status.talk.clear()
+                _LOGGER.info("Кнопка «Говорить»")
                 return True
             try:
                 frame = self.mic.read(timeout=0.5)
@@ -97,6 +98,7 @@ class VoiceLoop:
             if verdict is Verdict.DONE:
                 return b"".join(frames)
             if verdict is Verdict.NOTHING:
+                _LOGGER.info("Речи так и не услышал")
                 return None
         return None
 

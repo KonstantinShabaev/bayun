@@ -12,8 +12,6 @@ package = false
 # Мы используем его ONNX-модели, tflite не нужен.
 override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
 environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
-# gigaam прибит к старому onnxruntime под NumPy 1.x, голосовому циклу нужен свежий.
-conflicts = [[{ package = "bayun-stt", extra = "gigaam" }, { package = "bayun-voice", extra = "local" }]]
 
 [tool.uv.workspace]
 members = ["stt", "brain", "bench", "voice"]
@@ -59,6 +57,7 @@ module = [
     "wyoming.*",
     "jiwer.*",
     "faster_whisper.*",
+    "onnx_asr.*",
     "litellm.*",
     "openwakeword.*",
     "piper.*",
