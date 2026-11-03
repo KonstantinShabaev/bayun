@@ -43,6 +43,8 @@ class TtsConfig(BaseModel):
     engine: str = "piper"
     # Диктор Silero: aidar, eugene (мужские), baya, kseniya, xenia (женские).
     speaker: str = "eugene"
+    # Как произносить слова: {"Волтер": "Уо+лтэр"}. «+» — ударение (Silero).
+    pronounce: dict[str, str] = {}
     elevenlabs: ElevenLabsConfig = ElevenLabsConfig()
     voice: Path = Path("voices/ru_RU-dmitri-medium.onnx")
     # Язык фонем вместо родного языка голоса: "ru" для китайского голоса даёт акцент.

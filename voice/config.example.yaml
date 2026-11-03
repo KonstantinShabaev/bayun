@@ -22,6 +22,7 @@ stt:
 tts:
   engine: "piper"           # piper, silero (живее, extra silero) локально; elevenlabs — облако
   speaker: "eugene"         # диктор Silero: aidar, eugene, baya, kseniya, xenia
+  pronounce: {}             # как произносить слова, например {"Волтер": "Уо+лтэр"}
   elevenlabs:               # ключ в переменной ELEVENLABS_API_KEY
     voice_id: ""            # голос из библиотеки ElevenLabs, который хорошо говорит по-русски
     model: "eleven_v3"

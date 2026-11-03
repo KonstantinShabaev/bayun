@@ -27,3 +27,17 @@ def test_text_accents_for_silero() -> None:
 
     assert zh_text_accent("Привет, Жора!") == "Пливет, Шола!"
     assert zh_strong_text_accent("Привет, мир") == "Пливетэ, милэ"
+
+
+def test_pronounce_keeps_endings_and_case() -> None:
+    from bayun_voice.tts import Pronounced
+
+    class Echo:
+        rate = 16000
+        audio_tags = False
+
+        def synthesize(self, text: str) -> bytes:
+            return text.encode()
+
+    tts = Pronounced(Echo(), {"Волтер": "Уо+лтэр"})
+    assert tts.fix("Я Волтер. Спроси волтера.") == "Я Уо+лтэр. Спроси Уо+лтэра."

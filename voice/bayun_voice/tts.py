@@ -118,7 +118,34 @@ class SileroTts:
         return bytes((audio.numpy() * 32767).astype(np.int16).tobytes())
 
 
+class Pronounced:
+    """Словарь произношения поверх любого движка: «Волтер» → «Уо+лтэр».
+    Заменяется начало слова, окончания остаются: «Волтеру» → «Уо+лтэру».
+    «+» перед гласной — ударение для Silero."""
+
+    def __init__(self, tts: Tts, rules: dict[str, str]) -> None:
+        self._tts = tts
+        self.rate = tts.rate
+        self.audio_tags = tts.audio_tags
+        self._rules = [
+            (re.compile(rf"\b{re.escape(word)}", re.IGNORECASE), say) for word, say in rules.items()
+        ]
+
+    def fix(self, text: str) -> str:
+        for pattern, say in self._rules:
+            text = pattern.sub(say, text)
+        return text
+
+    def synthesize(self, text: str) -> bytes:
+        return self._tts.synthesize(self.fix(text))
+
+
 def load_tts(config: TtsConfig) -> Tts:
+    tts = _load_engine(config)
+    return Pronounced(tts, config.pronounce) if config.pronounce else tts
+
+
+def _load_engine(config: TtsConfig) -> Tts:
     if config.engine == "elevenlabs":
         el = config.elevenlabs
         return ElevenLabsTts(
