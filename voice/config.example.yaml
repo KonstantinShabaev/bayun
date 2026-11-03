@@ -22,12 +22,9 @@ tts:
   voice: "voices/ru_RU-dmitri-medium.onnx"
   phonemes: null            # язык фонем вместо родного языка голоса
   length_scale: null        # темп, больше 1 — медленнее
-  # Сильный китайский акцент: китайский голос читает русские фонемы.
-  #   voice: "voices/zh_CN-huayan-medium.onnx"
-  #   phonemes: "ru"
-  #   length_scale: 1.1     # 1.25 — ещё сильнее, но понятно с трудом
-  #   accent: "zh"          # оооочень сильно: р → л, оглушение, гласные между согласными
-  accent: null
+  accent: null              # китайский акцент: zh, zh-strong, zh-max (см. accent.py)
+  # phonemes: "ru" с голосом zh_CN-huayan-medium тоже даёт акцент, но звучит как
+  # китайская речь, а не русская.
 
 brain:
   url: "http://127.0.0.1:8765"
