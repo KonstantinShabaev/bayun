@@ -1,6 +1,7 @@
 # Скопируйте в config.yaml рядом с запуском: bayun-voice --config config.yaml
 audio:
-  input_device: null        # null — источник по умолчанию в PipeWire (pactl get-default-source)
+  input_device: null        # null — источник по умолчанию в PipeWire (pactl get-default-source);
+                            # с эхоподавлением: "bayun_aec_source" (deploy/voice-dev)
   output_device: null       # null — выход по умолчанию; лучше указать явно, PipeWire
                             # после перезагрузки может выбрать выход USB-микрофона
 

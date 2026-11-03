@@ -16,6 +16,11 @@ systemctl --user enable --now bayun-brain bayun-voice
 journalctl --user -fu bayun-voice
 ```
 
+Эхоподавление (чтобы Баюна можно было перебить, пока он говорит):
+`cp deploy/voice-dev/60-bayun-echo-cancel.conf ~/.config/pipewire/pipewire.conf.d/`,
+`systemctl --user restart pipewire pipewire-pulse wireplumber`, затем в `voice/config.yaml`
+`audio.input_device: "bayun_aec_source"`.
+
 Микрофон по умолчанию: `pactl set-default-source <источник>` (список: `pactl list short sources`).
 Страница состояния: `http://<сервер>:8770`, кнопка «Говорить» работает вместо имени.
 

@@ -4,13 +4,17 @@
 пользователя сама выбирает устройства и сможет подставить источник с эхоподавлением.
 """
 
+import logging
 import math
 import queue
 import subprocess
 import threading
+import time
 from collections.abc import Iterator
 
 import numpy as np
+
+_LOGGER = logging.getLogger(__name__)
 
 RATE = 16000
 # 80 мс: такими кусками openWakeWord считает лучше всего.
@@ -33,6 +37,10 @@ class Mic:
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self) -> None:
+        """parec падает при перезапуске PipeWire: поднимаем его заново."""
         cmd = [
             "parec",
             "--raw",
@@ -43,8 +51,12 @@ class Mic:
             "--client-name=bayun-voice",
             *_device_args(self.device),
         ]
-        self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        threading.Thread(target=self._read, daemon=True).start()
+        while True:
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+            self._read()
+            self._proc.wait()
+            _LOGGER.warning("Запись с микрофона прервалась, перезапускаю")
+            time.sleep(1)
 
     def _read(self) -> None:
         assert self._proc and self._proc.stdout
