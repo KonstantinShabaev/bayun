@@ -108,6 +108,68 @@ class Playback:
         self._proc.wait()
 
 
+class Player:
+    """Воспроизведение в своём потоке, чтобы можно было перебить на полуслове.
+
+    `add` ставит кусок в очередь, `finish` — больше кусков не будет,
+    `finished` взводится, когда всё доиграло или воспроизведение прервали.
+    """
+
+    def __init__(self, rate: int, device: str | None = None) -> None:
+        self.rate = rate
+        self.device = device
+        self.finished = threading.Event()
+        self._queue: queue.Queue[bytes | None] = queue.Queue()
+        self._aborted = False
+        self._proc: subprocess.Popen[bytes] | None = None
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def add(self, pcm: bytes) -> None:
+        if pcm:
+            self._queue.put(pcm)
+
+    def finish(self) -> None:
+        self._queue.put(None)
+
+    def abort(self) -> None:
+        self._aborted = True
+        if self._proc:
+            self._proc.kill()
+        self._queue.put(None)
+
+    def _run(self) -> None:
+        cmd = [
+            "pacat",
+            "--raw",
+            "--format=s16le",
+            f"--rate={self.rate}",
+            "--channels=1",
+            "--latency-msec=100",
+            "--client-name=bayun-voice",
+            "--stream-name=Баюн",
+            *_device_args(self.device),
+        ]
+        try:
+            while (pcm := self._queue.get()) is not None and not self._aborted:
+                if self._proc is None:
+                    self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                assert self._proc.stdin
+                # Пишем кусками по 0,1 с, чтобы прерывание срабатывало быстро.
+                step = self.rate // 10 * 2
+                for i in range(0, len(pcm), step):
+                    if self._aborted:
+                        break
+                    self._proc.stdin.write(pcm[i : i + step])
+            if self._proc and not self._aborted:
+                assert self._proc.stdin
+                self._proc.stdin.close()
+                self._proc.wait()
+        except (BrokenPipeError, ValueError):
+            pass
+        finally:
+            self.finished.set()
+
+
 def beep(rate: int, freq: float = 880.0, duration_s: float = 0.12, volume: float = 0.3) -> bytes:
     """Короткий сигнал «слушаю» с мягкими краями, чтобы не щёлкал."""
     n = int(rate * duration_s)

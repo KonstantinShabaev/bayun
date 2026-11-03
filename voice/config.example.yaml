@@ -16,6 +16,11 @@ listen:
   follow_up_s: 5.0          # ждать продолжения разговора без имени; 0 — не ждать
   beep: false               # тихий сигнал «слушаю» после имени
 
+reply:
+  filler_after_s: 0.8       # молчит дольше — сразу короткое «угу»
+  fillers: ["Угу.", "Так.", "Секунду."]
+  barge_in: true            # имя во время ответа обрывает его
+
 stt:
   engine: "onnx-gigaam-v3-e2e-ctc"   # или whisper-small (extra whisper), dummy
 

@@ -26,6 +26,14 @@ class ListenConfig(BaseModel):
     beep: bool = False
 
 
+class ReplyConfig(BaseModel):
+    # Если brain молчит дольше этого, сразу говорим короткое «угу».
+    filler_after_s: float = 0.8
+    fillers: list[str] = ["Угу.", "Так.", "Секунду."]
+    # Имя во время ответа обрывает его и снова слушает.
+    barge_in: bool = True
+
+
 class SttConfig(BaseModel):
     engine: str = "onnx-gigaam-v3-e2e-ctc"
 
@@ -77,6 +85,7 @@ class Config(BaseModel):
     audio: AudioConfig = AudioConfig()
     wake: WakeConfig = WakeConfig()
     listen: ListenConfig = ListenConfig()
+    reply: ReplyConfig = ReplyConfig()
     stt: SttConfig = SttConfig()
     tts: TtsConfig = TtsConfig()
     brain: BrainConfig = BrainConfig()

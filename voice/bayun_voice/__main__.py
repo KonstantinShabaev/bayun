@@ -5,14 +5,16 @@
 """
 
 import argparse
+import itertools
 import logging
 import queue
+import threading
 import time
 from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
-from .audio import Mic, Playback, beep
+from .audio import Mic, Playback, Player, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
@@ -36,6 +38,10 @@ class VoiceLoop:
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
+        # «Угу» синтезируем заранее, чтобы оно звучало мгновенно.
+        self.fillers = itertools.cycle(
+            [self.tts.synthesize(f) for f in config.reply.fillers] or [b""]
+        )
         _LOGGER.info(
             "Готово: имя %s, VAD %s, STT %s, голос %s",
             self.wake.name,
@@ -78,7 +84,10 @@ class VoiceLoop:
             text = self.transcribe(pcm)
             if not text:
                 break
-            self.reply(text, turn)
+            if self.reply(text, turn):
+                # Перебили по имени: сразу слушаем новую фразу.
+                timeout = self.config.listen.start_timeout_s
+                continue
             if not (turn.continue_conversation and self.config.listen.follow_up_s > 0):
                 break
             timeout = self.config.listen.follow_up_s
@@ -114,30 +123,76 @@ class VoiceLoop:
             self.status.log("user", text)
         return text
 
-    def reply(self, text: str, turn: Turn) -> None:
+    def reply(self, text: str, turn: Turn) -> bool:
+        """Говорит ответ по мере готовности. True — перебили по имени."""
         started = time.monotonic()
-        playback: Playback | None = None
-        try:
-            for sentence in self.brain.converse(text, turn, self.tts.audio_tags):
-                if playback is None:
+        sentences: queue.Queue[str | Exception | None] = queue.Queue()
+
+        def produce() -> None:
+            try:
+                for sentence in self.brain.converse(text, turn, self.tts.audio_tags):
+                    sentences.put(sentence)
+            except Exception as error:
+                sentences.put(error)
+            finally:
+                sentences.put(None)
+
+        threading.Thread(target=produce, daemon=True).start()
+        player = Player(self.tts.rate, self.config.audio.output_device)
+        self.mic.drain()
+        self.wake.reset()
+        first = True
+        filler_played = False
+        producing = True
+        while not player.finished.is_set():
+            if self.config.reply.barge_in and self.heard_name():
+                player.abort()
+                _LOGGER.info("Перебили")
+                self.status.log("system", "перебили")
+                return True
+            if not producing:
+                player.finished.wait(0.05)
+                continue
+            try:
+                item = sentences.get(timeout=0.05)
+            except queue.Empty:
+                waited = time.monotonic() - started
+                if first and not filler_played and waited >= self.config.reply.filler_after_s:
+                    player.add(next(self.fillers))
+                    filler_played = True
+                continue
+            if item is None:
+                producing = False
+                player.finish()
+            elif isinstance(item, Exception):
+                _LOGGER.error("brain не ответил: %s", item)
+                turn.continue_conversation = False
+                self.status.set(phase="error")
+                self.status.log("system", "brain не ответил")
+                player.add(self.tts.synthesize(TROUBLE_SPEECH))
+            else:
+                if first:
+                    first = False
                     first_s = time.monotonic() - started
                     _LOGGER.info("Первая фраза от brain через %.2f с", first_s)
                     self.status.set(
                         phase="speaking",
                         timings={**self.status.state["timings"], "first_s": first_s},
                     )
-                    playback = Playback(self.tts.rate, self.config.audio.output_device)
-                self.status.log("bayun", strip_audio_tags(sentence))
-                playback.write(self.tts.synthesize(sentence))
-        except Exception:
-            _LOGGER.exception("brain не ответил")
-            turn.continue_conversation = False
-            self.status.set(phase="error")
-            self.status.log("system", "brain не ответил")
-            self.say(TROUBLE_SPEECH)
-        finally:
-            if playback is not None:
-                playback.close()
+                self.status.log("bayun", strip_audio_tags(item))
+                player.add(self.tts.synthesize(item))
+        return False
+
+    def heard_name(self) -> bool:
+        """Прогнать накопленные кадры микрофона через детектор имени."""
+        while True:
+            try:
+                frame = self.mic.frames.get_nowait()
+            except queue.Empty:
+                return False
+            if self.wake(frame) >= self.config.wake.threshold:
+                self.wake.reset()
+                return True
 
     def say(self, text: str) -> None:
         self.say_raw(self.tts.synthesize(text))
