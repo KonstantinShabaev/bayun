@@ -101,10 +101,16 @@ class LiteLlmChat:
             {"role": "user", "content": question},
         ]
         response = await litellm.acompletion(
-            **{**self._kwargs(messages), "timeout": max(self.config.timeout_s, 30)},
+            # Поиск и рассуждение тратят токены до ответа: даём запас, иначе текст пустой.
+            **{
+                **self._kwargs(messages),
+                "timeout": max(self.config.timeout_s, 30),
+                "max_tokens": 1500,
+            },
             web_search_options={"search_context_size": "low"},
         )
-        return str(response.choices[0].message.content or "")
+        answer = str(response.choices[0].message.content or "").strip()
+        return answer or "Не нашёл ответа, спроси иначе."
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         import litellm

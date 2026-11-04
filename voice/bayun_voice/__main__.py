@@ -17,7 +17,7 @@ from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
-from .audio import Ducker, Mic, PlayerDucker, Playback, Player, beep
+from .audio import Ducker, Mic, Playback, Player, PlayerDucker, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
@@ -127,7 +127,7 @@ class VoiceLoop:
             timeout = self.config.listen.follow_up_s
         self.wake.reset()
         self.mic.drain()
-        self.status.set(phase="idle")
+        self.status.set(phase="idle", level=0.0)
 
     def record(self, start_timeout_s: float) -> bytes | None:
         self.mic.drain()
@@ -138,6 +138,7 @@ class VoiceLoop:
         frames: list[bytes] = []
         for frame in self.mic.stream():
             frames.append(frame.tobytes())
+            self.status.level(frames[-1])
             verdict = ender.push(self.vad(frame))
             if verdict is Verdict.DONE:
                 return b"".join(frames)
@@ -147,7 +148,7 @@ class VoiceLoop:
         return None
 
     def transcribe(self, pcm: bytes) -> str:
-        self.status.set(phase="thinking")
+        self.status.set(phase="thinking", level=0.0)
         started = time.monotonic()
         text = self.asr.transcribe(pcm, 16000).strip()
         stt_s = time.monotonic() - started
@@ -172,7 +173,7 @@ class VoiceLoop:
                 sentences.put(None)
 
         threading.Thread(target=produce, daemon=True).start()
-        player = Player(self.tts.rate, self.config.audio.output_device)
+        player = Player(self.tts.rate, self.config.audio.output_device, self.status.level)
         self.mic.drain()
         self.wake.reset()
         first = True

@@ -21,3 +21,15 @@ def test_talk_button_and_events() -> None:
         assert json.loads(data)["log"][0]["text"] == "привет"
     finally:
         server.shutdown()
+
+
+def test_level_is_throttled_and_bounded() -> None:
+    import numpy as np
+    from bayun_voice.status import Status
+
+    status = Status()
+    loud = (np.ones(1280) * 30000).astype(np.int16).tobytes()
+    status.level(loud)
+    assert status.state["level"] == 1.0
+    status.level(b"\0\0" * 1280)
+    assert status.state["level"] == 1.0  # второй раз за 0,1 с не обновляется

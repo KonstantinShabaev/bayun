@@ -10,7 +10,7 @@ import queue
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import numpy as np
@@ -128,9 +128,15 @@ class Player:
     `finished` взводится, когда всё доиграло или воспроизведение прервали.
     """
 
-    def __init__(self, rate: int, device: str | None = None) -> None:
+    def __init__(
+        self,
+        rate: int,
+        device: str | None = None,
+        on_chunk: Callable[[bytes], None] | None = None,
+    ) -> None:
         self.rate = rate
         self.device = device
+        self.on_chunk = on_chunk
         self.finished = threading.Event()
         self._queue: queue.Queue[bytes | None] = queue.Queue()
         self._aborted = False
@@ -172,7 +178,10 @@ class Player:
                 for i in range(0, len(pcm), step):
                     if self._aborted:
                         break
-                    self._proc.stdin.write(pcm[i : i + step])
+                    chunk = pcm[i : i + step]
+                    self._proc.stdin.write(chunk)
+                    if self.on_chunk:
+                        self.on_chunk(chunk)
             if self._proc and not self._aborted:
                 assert self._proc.stdin
                 self._proc.stdin.close()
