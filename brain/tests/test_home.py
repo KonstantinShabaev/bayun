@@ -12,6 +12,11 @@ from fastapi.testclient import TestClient
 STATES = [
     {"entity_id": "light.kitchen", "state": "off", "attributes": {"friendly_name": "Кухня"}},
     {"entity_id": "switch.dnd", "state": "on", "attributes": {"friendly_name": "Не беспокоить"}},
+    {
+        "entity_id": "input_select.sofa_effect",
+        "state": "выкл",
+        "attributes": {"friendly_name": "Эффект за диваном", "options": ["выкл", "светомузыка"]},
+    },
 ]
 
 
@@ -67,3 +72,33 @@ def test_unknown_entity_is_refused() -> None:
     )
     assert calls == []
     assert chat.seen[1][-1]["content"] == "Нет такого устройства."
+
+
+def test_effect_option_is_selected() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    chat = ToolChat(
+        {
+            "entity_id": "input_select.sofa_effect",
+            "action": "select_option",
+            "option": "светомузыка",
+        }
+    )
+    TestClient(create_app(Config(), chat, fake_ha(calls))).post(
+        "/converse", json={"text": "включи светомузыку"}
+    )
+    assert calls == [
+        (
+            "/api/services/input_select/select_option",
+            {"entity_id": "input_select.sofa_effect", "option": "светомузыка"},
+        )
+    ]
+    assert "варианты: выкл, светомузыка" in chat.seen[0][0]["content"]
+
+
+def test_unknown_option_is_refused() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    chat = ToolChat(
+        {"entity_id": "input_select.sofa_effect", "action": "select_option", "option": "диско"}
+    )
+    TestClient(create_app(Config(), chat, fake_ha(calls))).post("/converse", json={"text": "диско"})
+    assert calls == []
