@@ -129,3 +129,16 @@ def test_engine_uses_effect_smooth_mode() -> None:
         sleep=lambda dt: t.__setitem__(0, t[0] + 0.1),
     )
     assert sink.smooth is True
+
+
+def test_restore_colour_skips_white_dps() -> None:
+    from bayun_lights.transport import restore_steps
+
+    saved = {"20": True, "21": "colour", "22": 10, "23": 1000, "24": "000003e803e8"}
+    steps = restore_steps(saved)
+    assert all("22" not in s and "23" not in s for s in steps)
+    assert steps[-1] == {"21": "colour", "24": "000003e803e8"}
+    white = restore_steps({"20": True, "21": "white", "22": 1000, "23": 500, "24": "x"})
+    assert "24" not in white[-1] and white[-1]["22"] == 1000
+    off = restore_steps({"20": False, "21": "colour", "24": "x"})
+    assert off[-1] == {"20": False}
