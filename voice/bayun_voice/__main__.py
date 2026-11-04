@@ -25,6 +25,8 @@ from .wake import OpenWakeWord
 
 _LOGGER = logging.getLogger("bayun_voice")
 
+NEAR_MISS = 0.15
+
 TROUBLE_SPEECH = "Что-то сломалось у меня внутри, загляни в журнал."
 
 
@@ -78,6 +80,9 @@ class VoiceLoop:
             if score >= self.config.wake.threshold:
                 _LOGGER.info("Имя услышано (%.2f)", score)
                 return True
+            if score >= NEAR_MISS:
+                # Похоже на имя, но не дотянуло: по журналу видно, не занижен ли порог.
+                _LOGGER.info("Почти имя (%.2f)", score)
 
     def wake_screen(self) -> None:
         command = self.config.audio.wake_screen_command
