@@ -27,8 +27,13 @@ class AudioThread:
         self._thread.start()
 
     def _run(self) -> None:
-        for chunk in self._chunks:
-            self._q.put(self._analyzer.feed(rms_s16le(chunk)))
+        try:
+            for chunk in self._chunks:
+                self._q.put(self._analyzer.feed(rms_s16le(chunk)))
+        except Exception:
+            log.exception("Чтение звука упало")
+        else:
+            log.error("Источник звука закрылся (parec завершился)")
 
     def latest(self) -> AudioFeatures | None:
         last, beat = None, False

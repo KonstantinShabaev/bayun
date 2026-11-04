@@ -1,6 +1,7 @@
 """Отправка кадров лампам: напрямую по Tuya 3.x (tinytuya) или в консоль."""
 
 import logging
+import time
 from typing import Any, Protocol
 
 from bayun_lights.color import HSV, encode_dp24, encode_dp28
@@ -69,6 +70,14 @@ class TuyaSink:
             return
         try:
             self._dev.set_multiple_values(self._saved, nowait=False)
+            # После потока DP 28 лампа применяет режим (21) раньше, чем выходит
+            # из control, и остаётся в white. Повторяем режим и цвет отдельно.
+            time.sleep(0.5)
+            again = {k: self._saved[k] for k in ("21", "24") if k in self._saved}
+            if again.get("21") != "colour":
+                again.pop("24", None)
+            if again:
+                self._dev.set_multiple_values(again, nowait=False)
         except Exception:
             log.exception("Не удалось вернуть состояние %s", self.lamp.name)
         finally:
