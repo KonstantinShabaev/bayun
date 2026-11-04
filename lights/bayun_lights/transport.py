@@ -85,6 +85,9 @@ class TuyaSink:
         if not self._saved:
             return
         try:
+            # кадры DP 28 шли без ожидания ответа: даём лампе их доесть,
+            # иначе последний кадр может лечь поверх восстановленного цвета
+            time.sleep(0.5)
             for dps in restore_steps(self._saved):
                 self._dev.set_multiple_values(dps, nowait=False)
                 time.sleep(0.5)
