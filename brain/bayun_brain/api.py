@@ -26,6 +26,7 @@ from .llm import (
     agent_sentences,
     reply_sentences,
 )
+from .video import NAMES as VIDEO_NAMES
 from .video import PROMPT as VIDEO_PROMPT
 from .video import TOOLS as VIDEO_TOOLS
 from .video import Video
@@ -136,10 +137,7 @@ def create_app(
                 args = parse_args(call.arguments)
                 if call.name == "control_device" and home is not None:
                     outcome = await home.control(devices, args)
-                elif (
-                    call.name in ("play_video", "stop_video", "control_video", "set_volume")
-                    and video is not None
-                ):
+                elif call.name in VIDEO_NAMES and video is not None:
                     outcome = Final(await video.run(call.name, args))
                 elif call.name == "web_search" and search is not None:
                     question = str(args.get("question") or request.text)

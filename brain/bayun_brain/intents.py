@@ -67,10 +67,35 @@ for _words, _intent in [
     (("выключи звук", "без звука", "замолчи телевизор", "мьют", "включи звук телевизора"),
      Intent("set_volume", {"direction": "mute"})),
     (("включи звук в видео", "включи звук видео", "включи звук в ролике", "звук в видео"),
-     Intent("control_video", {"action": "volume", "level_pct": 100})),
+     Intent("control_video", {"action": "unmute"})),
+    (("вернись", "вернись назад", "назад на экране", "шаг назад"),
+     Intent("screen", {"action": "back"})),
+    (("листай вниз", "пролистай вниз", "вниз", "прокрути вниз", "листай"),
+     Intent("screen", {"action": "scroll", "direction": "down"})),
+    (("листай вверх", "пролистай вверх", "вверх", "прокрути вверх"),
+     Intent("screen", {"action": "scroll", "direction": "up"})),
+    (("покажи номера", "номера", "что на экране", "покажи кнопки"),
+     Intent("screen", {"action": "list"})),
 ]:  # fmt: skip
     for _w in _words:
         _FIXED[_w] = _intent
+
+
+_ORDINALS = {
+    "первый": 1, "первое": 1, "второй": 2, "второе": 2, "третий": 3, "третье": 3,
+    "четвертый": 4, "четвертое": 4, "пятый": 5, "пятое": 5, "шестой": 6, "седьмой": 7,
+    "восьмой": 8,
+}  # fmt: skip
+_RESULT = re.compile(
+    r"^(?:включи|поставь|давай|запусти)\s+(?:номер\s+)?(?P<n>\S+?)(?:\s+(?:видео|ролик|вариант))?$"
+)
+_CLICK = re.compile(r"^(?:нажми|кликни|открой|выбери)\s+(?:на\s+)?(?:номер\s+)?(?P<n>\d+)$")
+
+
+def _index(word: str) -> int | None:
+    if word.isdigit():
+        return int(word)
+    return _ORDINALS.get(word) or (int(_NUMBERS[word]) if word in _NUMBERS else None)
 
 
 def match(text: str) -> Intent | None:
@@ -91,6 +116,14 @@ def match(text: str) -> Intent | None:
         steps = int(_number(m.group("n"), 3))
         direction = "up" if "громч" in m.group("dir") else "down"
         return Intent("set_volume", {"direction": direction, "steps": steps})
+    if (m := _RESULT.match(phrase)) and (n := _index(m.group("n"))):
+        return Intent("play_result", {"n": n})
+    if m := _CLICK.match(phrase):
+        return Intent("screen", {"action": "click", "n": int(m.group("n"))})
     if m := _PLAY.match(phrase):
-        return Intent("play_video", {"query": m.group("q")})
+        query = m.group("q")
+        vk = re.search(r"\b(?:в|на|из)\s+(?:вк|вконтакте|vk)(?:\s+видео)?\b", query)
+        if vk:
+            query = (query[: vk.start()] + query[vk.end() :]).strip()
+        return Intent("play_video", {"query": query, "source": "vk" if vk else "youtube"})
     return None

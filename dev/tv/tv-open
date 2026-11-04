@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Show a page on the living-room TV (thin client of tv-agent on 127.0.0.1:8790).
+
+    tv-open URL           open URL in the kiosk, wake the TV, switch to the laptop input
+    tv-open --home        back to the Bayun screen (http://127.0.0.1:8770/)
+    tv-open --input-only  only wake the TV and switch to the laptop input
+
+Player control on the current kiosk page (the <video> element, not system volume):
+    tv-open --play | --pause | --toggle | --next | --status
+    tv-open --seek ±N     jump N seconds
+    tv-open --volume N    video volume 0–100
+--status prints JSON {playing, currentTime, duration, volume, muted, title, url}.
+
+Starts tv-agent in the background when it is not running.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+AGENT = os.environ.get("BAYUN_TV_AGENT", "http://127.0.0.1:8790")
+AGENT_DIR = os.environ.get("BAYUN_TV_DIR", os.path.expanduser("~/bayun/tv"))
+AGENT_PYTHON = os.path.expanduser("~/.local/share/bayun/atv-venv/bin/python")
+PID_FILE = os.path.expanduser("~/.cache/bayun/tv-agent.pid")
+PLAYER = {"--play": "play", "--pause": "pause", "--toggle": "toggle", "--next": "next",
+          "--status": "status", "--seek": "seek", "--volume": "volume"}
+
+
+def call(path: str, body: dict) -> dict:
+    req = urllib.request.Request(AGENT + path, json.dumps(body).encode(), {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(json.load(e).get("error", f"HTTP {e.code}")) from None
+
+
+def start_agent() -> None:
+    os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
+    with open(os.path.expanduser("~/.cache/bayun/tv-agent.log"), "ab") as log:
+        proc = subprocess.Popen([AGENT_PYTHON, "-m", "bayun_tv.agent"], cwd=AGENT_DIR, stdout=log, stderr=log,
+                                stdin=subprocess.DEVNULL, start_new_session=True)
+    with open(PID_FILE, "w") as f:
+        f.write(str(proc.pid))
+
+
+def request(path: str, body: dict) -> dict:
+    try:
+        return call(path, body)
+    except urllib.error.URLError:
+        start_agent()
+        for _ in range(40):
+            time.sleep(0.25)
+            try:
+                return call(path, body)
+            except urllib.error.URLError:
+                continue
+        raise RuntimeError("tv-agent did not start") from None
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help") or len(args) > 2:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    try:
+        cmd = args[0]
+        if cmd in PLAYER:
+            body = {"action": PLAYER[cmd]}
+            if cmd in ("--seek", "--volume"):
+                if len(args) < 2:
+                    raise RuntimeError(f"{cmd} needs a number")
+                body["value"] = float(args[1])
+            r = request("/player", body)
+            if cmd == "--status":
+                r.pop("ms", None)
+                print(json.dumps(r, ensure_ascii=False))
+            return 0
+        if len(args) != 1:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+        if cmd == "--home":
+            request("/home", {})
+        elif cmd == "--input-only":
+            r = request("/input", {})
+            if str(r.get("tv", "")).startswith("error"):
+                raise RuntimeError(r["tv"])
+        else:
+            request("/open", {"url": cmd})
+        return 0
+    except Exception as e:  # noqa: BLE001 - one line to stderr, non-zero exit
+        print(f"tv-open: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -40,15 +40,8 @@ class HomeAssistantConfig(BaseModel):
 
 
 class VideoConfig(BaseModel):
-    # Команда, открывающая URL на телевизоре (получает URL последним аргументом).
-    # Пусто — видео выключено.
-    open_command: list[str] = []
-    # Вернуть на телевизор экран Баюна.
-    home_command: list[str] = []
-    # Пульт ТВ: получает коды клавиш KEYCODE_VOLUME_UP/DOWN, KEYCODE_MUTE.
-    volume_command: list[str] = []
-    # Плеер на ТВ: получает --pause, --play, --next, --seek ±N.
-    player_command: list[str] = []
+    # tv-agent (dev/tv): киоск Chromium и пульт ТВ. Пусто — телевизора нет.
+    agent_url: str = ""
 
 
 class Config(BaseModel):

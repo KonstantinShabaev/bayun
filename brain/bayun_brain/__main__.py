@@ -26,17 +26,7 @@ def run() -> None:
     chat: ChatModel | None = None if args.no_llm else LiteLlmChat(config)
     token = config.home_assistant.resolved_token()
     home = HomeAssistant(config.home_assistant.url, token) if token else None
-    video_config = config.video
-    video = (
-        Video(
-            video_config.open_command,
-            video_config.home_command,
-            volume_command=video_config.volume_command,
-            player_command=video_config.player_command,
-        )
-        if video_config.open_command
-        else None
-    )
+    video = Video(config.video.agent_url) if config.video.agent_url else None
     uvicorn.run(create_app(config, chat, home, video), host=args.host, port=args.port)
 
 

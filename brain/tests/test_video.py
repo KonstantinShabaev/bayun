@@ -1,13 +1,11 @@
-import asyncio
 import json
-import sys
-from pathlib import Path
 from typing import Any
 
+import httpx
 from bayun_brain.api import create_app
 from bayun_brain.config import Config
 from bayun_brain.llm import Completion, Message, ToolCall
-from bayun_brain.video import Found, Video
+from bayun_brain.video import Video
 from fastapi.testclient import TestClient
 
 
@@ -27,72 +25,67 @@ class OneToolChat:
         return Completion("Включил.")
 
 
-def recorder(tmp_path: Path) -> tuple[list[str], Path]:
-    log = tmp_path / "opened"
-    script = f"open({str(log)!r}, 'a').write(' '.join(__import__('sys').argv[1:]) + '\\n')"
-    return [sys.executable, "-c", script], log
+def fake_agent(calls: list[tuple[str, dict[str, Any]]], status: int = 200) -> Video:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content or b"{}")
+        calls.append((request.url.path, body))
+        if status != 200:
+            return httpx.Response(status, json={"error": "no video on the page"})
+        if request.url.path.endswith("/search"):
+            results = [{"n": 1, "title": "Космос 4K"}, {"n": 2, "title": "Луна"}]
+            return httpx.Response(200, json={"results": results})
+        return httpx.Response(200, json={"ok": True, "ms": 3})
+
+    return Video("http://agent", transport=httpx.MockTransport(handler))
 
 
-def test_play_video_opens_first_result(tmp_path: Path) -> None:
-    command, log = recorder(tmp_path)
-
-    async def search(query: str) -> Found | None:
-        assert query == "лофи"
-        return Found("https://www.youtube.com/watch?v=abc", "Лофи радио")
-
-    async def scenario() -> str:
-        video = Video(command, [], search)
-        said = await video.run("play_video", {"query": "лофи"})
-        await asyncio.gather(*video._background)
-        return said
-
-    assert asyncio.run(scenario()) == "Включаю: Лофи радио."
-    assert log.read_text() == "https://www.youtube.com/watch?v=abc\n"
-
-
-def test_fast_command_skips_llm(tmp_path: Path) -> None:
-    command, log = recorder(tmp_path)
-    chat = OneToolChat("never", {})
-    video = Video(command, [], player_command=command)
+def ask(text: str, video: Video, chat: Any = None) -> str:
     client = TestClient(create_app(Config(), chat, None, video))
-    speech = client.post("/converse", json={"text": "Джарвис, пауза."}).json()["speech"]
-    assert speech == "Пауза."
-    assert chat.seen == []
-    assert log.read_text() == "--pause\n"
+    return str(client.post("/converse", json={"text": text}).json()["speech"])
 
 
-def test_stop_video_returns_home(tmp_path: Path) -> None:
-    command, log = recorder(tmp_path)
-    chat = OneToolChat("stop_video", {})
-    video = Video(command, [*command, "--home"])
-    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "хватит"})
-    assert log.read_text() == "--home\n"
-
-
-def test_failing_tv_is_reported() -> None:
-    chat = OneToolChat("stop_video", {})
-    video = Video([], [sys.executable, "-c", "raise SystemExit(1)"])
-    client = TestClient(create_app(Config(), chat, None, video))
-    speech = client.post("/converse", json={"text": "x"}).json()["speech"]
-    assert speech == "Телевизор не отозвался."
-
-
-def test_volume_up_presses_tv_keys(tmp_path: Path) -> None:
-    command, log = recorder(tmp_path)
-    chat = OneToolChat("set_volume", {"direction": "up", "steps": 2})
-    video = Video(command, [], volume_command=command)
-    TestClient(create_app(Config(), chat, None, video)).post(
-        "/converse", json={"text": "чуть громче бы"}
+def test_play_video_plays_first_result() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    chat = OneToolChat("play_video", {"query": "космос"})
+    assert ask("хочу посмотреть что-нибудь про космос", fake_agent(calls), chat) == (
+        "Включаю: Космос 4K."
     )
-    assert log.read_text() == "KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP\n"
+    assert calls == [("/youtube/search", {"q": "космос", "n": 8}), ("/youtube/play", {"n": 1})]
+    assert len(chat.seen) == 1
 
 
-def test_seek_back(tmp_path: Path) -> None:
-    command, log = recorder(tmp_path)
-    chat = OneToolChat("control_video", {"action": "seek", "seconds": -30})
-    video = Video(command, [], player_command=command)
-    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "назад"})
-    assert log.read_text() == "--seek -30\n"
+def test_vk_search_then_play_by_number() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    video = fake_agent(calls)
+    chat = OneToolChat("search_video", {"query": "рыбалка", "source": "vk"})
+    speech = ask("найди в вк рыбалку", video, chat)
+    assert speech.startswith("Нашёл") and "2 — Луна" in speech
+    assert ask("Включи второй", video) == "Включаю."
+    assert calls[-1] == ("/vk/play", {"n": 2})
+
+
+def test_fast_pause_skips_llm() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    chat = OneToolChat("never", {})
+    assert ask("Джарвис, пауза.", fake_agent(calls), chat) == "Пауза."
+    assert chat.seen == []
+    assert calls == [("/player", {"action": "pause"})]
+
+
+def test_seek_and_tv_volume() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    video = fake_agent(calls)
+    ask("назад на 30 секунд", video)
+    ask("сделай громче на два", video)
+    assert calls == [
+        ("/player", {"action": "seek", "value": -30.0}),
+        ("/tv/volume", {"dir": "up", "steps": 2}),
+    ]
+
+
+def test_no_video_is_reported() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    assert ask("пауза", fake_agent(calls, status=404)) == "Видео сейчас не играет."
 
 
 class SearchChat(OneToolChat):
