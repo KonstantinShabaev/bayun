@@ -33,7 +33,7 @@ class AudioThread:
         except Exception:
             log.exception("Чтение звука упало")
         else:
-            log.error("Источник звука закрылся (parec завершился)")
+            log.info("Источник звука закрылся")
 
     def latest(self) -> AudioFeatures | None:
         last, beat = None, False
@@ -54,6 +54,7 @@ def run(
     duration: float | None = None,
     audio: AudioThread | None = None,
     smooth: bool | None = None,
+    stop: threading.Event | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
@@ -70,6 +71,8 @@ def run(
         while True:
             now = clock() - t0
             if duration is not None and now >= duration:
+                break
+            if stop is not None and stop.is_set():
                 break
             if audio is not None:
                 features = audio.latest() or features

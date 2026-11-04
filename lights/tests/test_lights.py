@@ -142,3 +142,46 @@ def test_restore_colour_skips_white_dps() -> None:
     assert "24" not in white[-1] and white[-1]["22"] == 1000
     off = restore_steps({"20": False, "21": "colour", "24": "x"})
     assert off[-1] == {"20": False}
+
+
+def test_server_switches_effects_and_stops() -> None:
+    import threading
+    import time
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from bayun_lights.server import Controller, make_handler
+
+    lamps = [devices.Lamp("a", "1", "k", "10.0.0.1"), devices.Lamp("b", "2", "k", "10.0.0.2")]
+    made: list[FakeSink] = []
+
+    def make(lamp: devices.Lamp) -> FakeSink:
+        made.append(FakeSink())
+        return made[-1]
+
+    ctl = Controller(lamps, make, fps=50)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, "s3cret"))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def call(path: str, method: str = "POST", token: str = "s3cret") -> dict[str, object]:
+        req = urllib.request.Request(base + path, method=method)
+        req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())  # type: ignore[no-any-return]
+
+    try:
+        with pytest.raises(urllib.error.HTTPError):
+            call("/state", "GET", token="wrong")
+        assert call("/effect/rainbow?lamp=a")["effect"] == "rainbow"
+        time.sleep(0.1)
+        assert len(made) == 1 and made[0].sent
+        assert call("/effect/candle")["effect"] == "candle"
+        assert made[0].stopped  # прошлый эффект остановлен и вернул лампу
+        assert call("/stop")["effect"] is None
+        assert all(s.stopped for s in made)
+        with pytest.raises(urllib.error.HTTPError):
+            call("/effect/nope")
+    finally:
+        httpd.shutdown()
+        ctl.stop()

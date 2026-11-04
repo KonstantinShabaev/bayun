@@ -21,7 +21,7 @@ from bayun_lights.transport import PrintSink, Sink, TuyaSink
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="bayun-lights", description=__doc__.split("\n")[0])
-    p.add_argument("effect", choices=["list", *EFFECTS])
+    p.add_argument("effect", choices=["list", "serve", *EFFECTS])
     p.add_argument("--devices", type=Path, default=devices.DEFAULT_PATH)
     p.add_argument("--lamp", action="append", default=[], help="имя, IP или id; можно несколько")
     p.add_argument("--fps", type=float, default=12.0)
@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> None:
         action=argparse.BooleanOptionalAction,
         help="лампа плавно перетекает между кадрами (по умолчанию — как задумано эффектом)",
     )
+    p.add_argument("--host", default="127.0.0.1", help="для serve")
+    p.add_argument("--port", type=int, default=8765, help="для serve")
     p.add_argument("--dry-run", action="store_true", help="печатать кадры, лампы не трогать")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -40,6 +42,13 @@ def main(argv: list[str] | None = None) -> None:
     if a.effect == "list":
         for lamp in lamps:
             print(f"{lamp.name}\t{lamp.ip}\tv{lamp.version}")
+        return
+
+    if a.effect == "serve":
+        from bayun_lights.server import Controller, serve
+
+        make: type[Sink] = PrintSink if a.dry_run else TuyaSink
+        serve(Controller(lamps, make, fps=a.fps, audio_device=a.audio_device), a.host, a.port)
         return
 
     effect = EFFECTS[a.effect]()

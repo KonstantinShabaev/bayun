@@ -7,6 +7,7 @@
 import math
 import subprocess
 import sys
+import threading
 from array import array
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -63,9 +64,14 @@ class Analyzer:
         return AudioFeatures(level=min(self._level, 1.0), beat=beat)
 
 
-def monitor_chunks(device: str = "@DEFAULT_MONITOR@") -> Iterator[bytes]:
+def monitor_chunks(
+    device: str = "@DEFAULT_MONITOR@", stop: threading.Event | None = None
+) -> Iterator[bytes]:
     cmd = ["parec", f"--device={device}", "--format=s16le", f"--rate={RATE}", "--channels=1"]
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
         assert proc.stdout is not None
-        while chunk := proc.stdout.read(CHUNK * 2):
-            yield chunk
+        try:
+            while not (stop and stop.is_set()) and (chunk := proc.stdout.read(CHUNK * 2)):
+                yield chunk
+        finally:
+            proc.terminate()
