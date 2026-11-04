@@ -1,6 +1,6 @@
 """HTTP-сервис эффектов: HA (или Баюн) выбирает эффект, сервис крутит его на лампах.
 
-    bayun-lights serve --host 192.168.122.1 --port 8765
+    bayun-lights serve --host 192.168.122.1 --port 8775
 
     GET  /state            → {"effect": "rainbow" | null, "lamps": [...]}
     POST /effect/<имя>     → запустить эффект (прошлый останавливается)

@@ -4,7 +4,7 @@
 
 rest_command:
   bayun_light_effect:
-    url: "http://192.168.122.1:8765/effect/{{ effect }}"
+    url: "http://192.168.122.1:8775/effect/{{ effect }}"
     method: post
     headers:
       Authorization: !secret bayun_lights_auth

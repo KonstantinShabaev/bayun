@@ -10,7 +10,7 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=-%h/.config/bayun/lights.env
 # 192.168.122.1 — адрес хоста в сети libvirt, его видит ВМ с HA; из LAN сервис не виден
-ExecStart=%h/.local/share/bayun/lights-venv/bin/bayun-lights serve --host 192.168.122.1 --port 8765
+ExecStart=%h/.local/share/bayun/lights-venv/bin/bayun-lights serve --host 192.168.122.1 --port 8775
 Restart=on-failure
 RestartSec=5
 

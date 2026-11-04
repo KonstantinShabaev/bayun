@@ -24,9 +24,9 @@ Ctrl+C останавливает эффект, и лампы возвращаю
 `bayun-lights serve` держит один эффект за раз и принимает команды по HTTP:
 
 ```sh
-curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8765/effect/rainbow
-curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8765/stop
-curl -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8765/state
+curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8775/effect/rainbow
+curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8775/stop
+curl -H "Authorization: Bearer $TOKEN" http://192.168.122.1:8775/state
 ```
 
 - `deploy/bayun-lights.service` — пользовательский systemd-сервис на ноутбуке.

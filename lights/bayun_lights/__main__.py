@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> None:
         help="лампа плавно перетекает между кадрами (по умолчанию — как задумано эффектом)",
     )
     p.add_argument("--host", default="127.0.0.1", help="для serve")
-    p.add_argument("--port", type=int, default=8765, help="для serve")
+    p.add_argument("--port", type=int, default=8775, help="для serve")
     p.add_argument("--dry-run", action="store_true", help="печатать кадры, лампы не трогать")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
