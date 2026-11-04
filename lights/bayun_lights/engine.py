@@ -53,6 +53,7 @@ def run(
     fps: float = 12.0,
     duration: float | None = None,
     audio: AudioThread | None = None,
+    smooth: bool | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
@@ -64,6 +65,7 @@ def run(
     t0 = clock()
     period = 1 / fps
     features = None
+    smooth = effect.smooth if smooth is None else smooth
     try:
         while True:
             now = clock() - t0
@@ -75,7 +77,7 @@ def run(
             for i, (sink, color) in enumerate(zip(sinks, colors, strict=True)):
                 key = tuya_hsv(color)
                 if key != last[i]:
-                    sink.send(color)
+                    sink.send(color, smooth=smooth)
                     last[i] = key
                     sent += 1
             sleep(max(0.0, period - (clock() - t0 - now)))

@@ -16,6 +16,9 @@ from bayun_lights.color import HSV
 class Effect:
     name = ""
     needs_audio = False
+    # Плавный режим DP 28: лампа сама перетекает между кадрами, рывков не видно.
+    # Для ударов в музыке и мерцания свечи нужен мгновенный.
+    smooth = False
 
     def frame(self, t: float, n: int, audio: AudioFeatures | None) -> list[HSV]:
         raise NotImplementedError
@@ -26,6 +29,7 @@ class Rainbow(Effect):
     """Радуга бежит по лампам, period — секунд на полный круг."""
 
     name = "rainbow"
+    smooth = True
     period: float = 12.0
     brightness: float = 1.0
 
@@ -39,14 +43,18 @@ class Breathe(Effect):
     """Дыхание одним цветом, лампы чуть вразнобой."""
 
     name = "breathe"
+    smooth = True
     hue: float = 30.0
-    period: float = 5.0
+    period: float = 8.0
+    floor: float = 0.05
+    gamma: float = 2.2  # глаз сильнее замечает перепады на низкой яркости
 
     def frame(self, t: float, n: int, audio: AudioFeatures | None) -> list[HSV]:
         out = []
         for i in range(n):
             phase = 2 * math.pi * (t / self.period + i * 0.15)
-            out.append(HSV(self.hue, 0.9, 0.08 + 0.92 * (0.5 - 0.5 * math.cos(phase))))
+            ease = (0.5 - 0.5 * math.cos(phase)) ** self.gamma
+            out.append(HSV(self.hue, 0.9, self.floor + (1 - self.floor) * ease))
         return out
 
 

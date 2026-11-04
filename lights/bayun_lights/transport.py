@@ -16,7 +16,7 @@ STATE_DPS = ("20", "21", "22", "23", "24")
 
 class Sink(Protocol):
     def start(self) -> None: ...
-    def send(self, color: HSV) -> None: ...
+    def send(self, color: HSV, *, smooth: bool = False) -> None: ...
     def stop(self) -> None: ...
 
 
@@ -27,8 +27,8 @@ class PrintSink:
     def start(self) -> None:
         print(f"[{self.lamp.name}] start")
 
-    def send(self, color: HSV) -> None:
-        print(f"[{self.lamp.name}] dp28={encode_dp28(color)}")
+    def send(self, color: HSV, *, smooth: bool = False) -> None:
+        print(f"[{self.lamp.name}] dp28={encode_dp28(color, smooth=smooth)}")
 
     def stop(self) -> None:
         print(f"[{self.lamp.name}] stop")
@@ -62,8 +62,8 @@ class TuyaSink:
         self._saved = {k: dps[k] for k in STATE_DPS if k in dps}
         self._dev.set_multiple_values({"20": True, "21": "colour"}, nowait=True)
 
-    def send(self, color: HSV) -> None:
-        self._dev.set_value(28, encode_dp28(color), nowait=True)
+    def send(self, color: HSV, *, smooth: bool = False) -> None:
+        self._dev.set_value(28, encode_dp28(color, smooth=smooth), nowait=True)
 
     def stop(self) -> None:
         if not self._saved:

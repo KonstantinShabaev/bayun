@@ -27,6 +27,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--fps", type=float, default=12.0)
     p.add_argument("--duration", type=float, help="секунд; по умолчанию до Ctrl+C")
     p.add_argument("--audio-device", default="@DEFAULT_MONITOR@")
+    p.add_argument(
+        "--smooth",
+        action=argparse.BooleanOptionalAction,
+        help="лампа плавно перетекает между кадрами (по умолчанию — как задумано эффектом)",
+    )
     p.add_argument("--dry-run", action="store_true", help="печатать кадры, лампы не трогать")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -43,7 +48,7 @@ def main(argv: list[str] | None = None) -> None:
     if effect.needs_audio:
         audio = AudioThread(monitor_chunks(a.audio_device))
         audio.start()
-    sent = run(effect, sinks, fps=a.fps, duration=a.duration, audio=audio)
+    sent = run(effect, sinks, fps=a.fps, duration=a.duration, audio=audio, smooth=a.smooth)
     print(f"Отправлено кадров: {sent}")
 
 

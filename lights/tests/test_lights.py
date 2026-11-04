@@ -82,8 +82,9 @@ class FakeSink:
     def start(self) -> None:
         self.started = True
 
-    def send(self, color: HSV) -> None:
+    def send(self, color: HSV, *, smooth: bool = False) -> None:
         self.sent.append(color)
+        self.smooth = smooth
 
     def stop(self) -> None:
         self.stopped = True
@@ -103,3 +104,28 @@ def test_engine_skips_unchanged_frames_and_stops() -> None:
     # радуга почти стоит на месте: каждой лампе ушёл один кадр
     assert sent == 2
     assert all(s.started and s.stopped and len(s.sent) == 1 for s in sinks)
+
+
+def test_breathe_eases_low_end() -> None:
+    from bayun_lights.effects import Breathe
+
+    b = Breathe(period=8)
+    lows = [b.frame(t, 1, None)[0].v for t in (0.0, 0.4, 0.8)]
+    # у дна яркость растёт медленно, без скачка
+    assert lows[0] == pytest.approx(0.05)
+    assert lows[1] - lows[0] < 0.01
+    assert lows[2] - lows[1] < 0.05
+
+
+def test_engine_uses_effect_smooth_mode() -> None:
+    t = [0.0]
+    sink = FakeSink()
+    run(
+        Rainbow(),
+        [sink],
+        fps=10,
+        duration=0.3,
+        clock=lambda: t[0],
+        sleep=lambda dt: t.__setitem__(0, t[0] + 0.1),
+    )
+    assert sink.smooth is True
