@@ -65,7 +65,7 @@ class Analyzer:
 
 def monitor_chunks(device: str = "@DEFAULT_MONITOR@") -> Iterator[bytes]:
     cmd = ["parec", f"--device={device}", "--format=s16le", f"--rate={RATE}", "--channels=1"]
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
         assert proc.stdout is not None
         while chunk := proc.stdout.read(CHUNK * 2):
             yield chunk

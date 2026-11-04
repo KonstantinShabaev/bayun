@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from bayun_lights.audio import AudioFeatures
-from bayun_lights.color import BLACK, HSV
+from bayun_lights.color import HSV
 
 
 class Effect:
@@ -86,7 +86,8 @@ class Music(Effect):
 
     def frame(self, t: float, n: int, audio: AudioFeatures | None) -> list[HSV]:
         if audio is None:
-            return [BLACK] * n
+            # звука ещё нет — слабое свечение, чтобы лампа не казалась сломанной
+            return [HSV(self._hue + 25 * i, 1.0, self.floor) for i in range(n)]
         if audio.beat:
             self._hue = (self._hue + self.hue_step) % 360
             self._lead = (self._lead + 1) % max(n, 1)
