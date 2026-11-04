@@ -45,6 +45,14 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "pause_video",
+            "description": "Ставит видео на телевизоре на паузу (resume=true — продолжает).",
+            "parameters": {"type": "object", "properties": {"resume": {"type": "boolean"}}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_volume",
             "description": (
                 "Громкость телевизора (видео и голос Баюна): up — громче, down — тише, "
@@ -66,7 +74,7 @@ VOLUME_KEYS = {"up": "KEYCODE_VOLUME_UP", "down": "KEYCODE_VOLUME_DOWN", "mute":
 
 PROMPT = (
     "\nЕсть телевизор: включить на нём видео — play_video с запросом для YouTube, "
-    "выключить — stop_video, громкость — set_volume. Назови, что включил."
+    "выключить — stop_video, пауза — pause_video, громкость — set_volume. Назови, что включил."
 )
 
 
@@ -94,7 +102,11 @@ class Video:
         home_command: list[str],
         search: Search = youtube_search,
         volume_command: list[str] | None = None,
+        pause_command: list[str] | None = None,
+        resume_command: list[str] | None = None,
     ) -> None:
+        self.pause_command = pause_command or []
+        self.resume_command = resume_command or []
         self.open_command = open_command
         self.home_command = home_command
         self.volume_command = volume_command or []
@@ -103,6 +115,11 @@ class Video:
     async def run(self, name: str, args: dict[str, Any]) -> str:
         if name == "set_volume":
             return await self._volume(args)
+        if name == "pause_video":
+            command = self.resume_command if args.get("resume") else self.pause_command
+            if not command:
+                return "Паузу ставить не умею."
+            return await self._exec(command, "Продолжаю." if args.get("resume") else "Пауза.")
         if name == "stop_video":
             if not self.home_command:
                 return "Не умею выключать видео."

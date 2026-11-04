@@ -1,6 +1,7 @@
 """Страница состояния на экране сервера (потом на ТВ): что слышит, что отвечает.
 
 Стандартная библиотека, без фреймворка: GET / — страница, GET /events — SSE,
+GET /api/state — текущее состояние одним JSON,
 POST /talk — кнопка «Говорить» вместо имени.
 """
 
@@ -51,6 +52,12 @@ def serve(status: Status, host: str, port: int) -> ThreadingHTTPServer:
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(page)
+            elif self.path == "/api/state":
+                _, data = status.wait(-1, timeout=0)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(data.encode())
             elif self.path == "/events":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")

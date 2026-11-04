@@ -47,6 +47,9 @@ class VideoConfig(BaseModel):
     home_command: list[str] = []
     # Пульт ТВ: получает коды клавиш KEYCODE_VOLUME_UP/DOWN, KEYCODE_MUTE.
     volume_command: list[str] = []
+    # Пауза и продолжение видео на ТВ.
+    pause_command: list[str] = []
+    resume_command: list[str] = []
 
 
 class Config(BaseModel):

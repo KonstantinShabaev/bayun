@@ -21,3 +21,5 @@ video:
   home_command: ["/home/walter/bayun/bin/tv-open", "--home"]
   volume_command:
     ["/home/walter/.local/share/bayun/atv-venv/bin/python", "/home/walter/.config/bayun/androidtv/key.py"]
+  pause_command: ["/home/walter/bayun/bin/tv-open", "--pause"]
+  resume_command: ["/home/walter/bayun/bin/tv-open", "--play"]
