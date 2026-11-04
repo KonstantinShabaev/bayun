@@ -7,6 +7,7 @@ from pathlib import Path
 import uvicorn
 
 from .api import create_app
+from .code import CodeTasks
 from .config import load_config
 from .ha import HomeAssistant
 from .llm import ChatModel, LiteLlmChat
@@ -37,7 +38,13 @@ def run() -> None:
         if video_config.open_command
         else None
     )
-    uvicorn.run(create_app(config, chat, home, video), host=args.host, port=args.port)
+    code = None
+    if config.code.projects:
+        from .code.sdk import SdkSession
+        from .code.summary import summarizer
+
+        code = CodeTasks(config.code, SdkSession(config.code), summarizer(chat))
+    uvicorn.run(create_app(config, chat, home, video, code), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

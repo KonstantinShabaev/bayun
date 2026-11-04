@@ -1,5 +1,6 @@
 """HTTP API: /converse, /converse/stream, /speaker-hint, /health (docs/PROJECT_SPEC.md, §4.2)."""
 
+import asyncio
 import json
 import logging
 import time
@@ -12,6 +13,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import __version__, intents
+from .code import PROMPT as CODE_PROMPT
+from .code import TOOL_NAMES as CODE_TOOL_NAMES
+from .code import TOOLS as CODE_TOOLS
+from .code import Announcements, CodeTasks
 from .config import Config
 from .ha import TOOL, Device, HomeAssistant, devices_prompt, parse_args
 from .llm import (
@@ -80,16 +85,24 @@ def create_app(
     chat: ChatModel | None = None,
     home: HomeAssistant | None = None,
     video: Video | None = None,
+    code: CodeTasks | None = None,
 ) -> FastAPI:
     """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома,
-    `video=None` — без телевизора."""
+    `video=None` — без телевизора, `code=None` — без задач Claude Code."""
     config = config or Config()
     app = FastAPI(title="bayun-brain", version=__version__)
     hints = HintStore(window_s=config.speaker_hint_window_s)
     conversations = Conversations(config.assistant.history_turns)
+    announcements = code.announcements if code is not None else Announcements()
 
     async def sentences(request: ConverseRequest, conversation_id: str) -> AsyncIterator[str]:
         speaker = hints.speaker_for(time.time())
+        if code is not None and code.owns(request.conversation_id):
+            # Ответ на вопрос Claude Code сразу после объявления: без LLM.
+            yield await code.run(
+                "code_answer", {"text": request.text}, request.device_id, request.conversation_id
+            )
+            return
         if video is not None and (intent := intents.match(request.text)):
             started = time.monotonic()
             outcome = await video.run(intent.tool, intent.args)
@@ -123,6 +136,9 @@ def create_app(
         if video is not None:
             system += VIDEO_PROMPT
             tools += VIDEO_TOOLS
+        if code is not None:
+            system += CODE_PROMPT + code.prompt_hint()
+            tools += CODE_TOOLS
         if request.audio_tags:
             system += AUDIO_TAGS_PROMPT
         if speaker != "guest":
@@ -144,6 +160,10 @@ def create_app(
                 elif call.name == "web_search" and search is not None:
                     question = str(args.get("question") or request.text)
                     outcome = Final(await search(question))
+                elif call.name in CODE_TOOL_NAMES and code is not None:
+                    outcome = Final(
+                        await code.run(call.name, args, request.device_id, conversation_id)
+                    )
                 else:
                     outcome = "Нет такого инструмента."
                 _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
@@ -174,6 +194,28 @@ def create_app(
     async def speaker_hint(hint: SpeakerHint) -> dict[str, str]:
         hints.put(hint)
         return {"status": "ok"}
+
+    @app.get("/announcements")
+    async def announcements_stream() -> StreamingResponse:
+        """SSE: то, что Баюн говорит сам (docs/claude-code-voice.md, «Как Баюн говорит сам»).
+
+        `data: {"type": "announcement", ...}` или `data: {"type": "resolved", "id": ...}`.
+        """
+        queue = announcements.listen()
+
+        async def events() -> AsyncIterator[str]:
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), 15)
+                    except TimeoutError:
+                        yield ": ping\n\n"
+                        continue
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                announcements.unlisten(queue)
+
+        return StreamingResponse(events(), media_type="text/event-stream")
 
     @app.post("/converse")
     async def converse(request: ConverseRequest) -> ConverseResponse:

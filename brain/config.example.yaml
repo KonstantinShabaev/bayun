@@ -8,5 +8,15 @@ home_assistant:
   url: "http://homeassistant.local:8123"
   token: ""                       # long-lived token отдельного пользователя Баюна
 
+# Задачи Claude Code голосом (docs/claude-code-voice.md). Нужен extra `code`
+# и вход в Claude Code на этой машине. Пустой projects — выключено.
+code:
+  projects: {}                    # баюн: ~/bayun-dev
+  model: null                     # по умолчанию — модель Claude Code
+  max_turns: 60
+  push_branch_prefix: "claude/voice-"
+  push_without_asking: false      # true только при ruleset на main
+  allowed_devices: ["server"]
+
 database: "bayun.db"
 speaker_hint_window_s: 3.0

@@ -70,6 +70,7 @@ module = [
     "litellm.*",
     "openwakeword.*",
     "piper.*",
+    "claude_agent_sdk.*",
 ]
 ignore_missing_imports = true
 

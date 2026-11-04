@@ -51,11 +51,29 @@ class VideoConfig(BaseModel):
     player_command: list[str] = []
 
 
+class CodeConfig(BaseModel):
+    """Задачи Claude Code голосом (docs/claude-code-voice.md). Пусто — выключено."""
+
+    # Как проект называют голосом → рабочий клон. Не тот клон, из которого работает Баюн.
+    projects: dict[str, str] = {}
+    model: str | None = None
+    max_turns: int = 60
+    max_budget_usd: float | None = None
+    push_branch_prefix: str = "claude/voice-"
+    # Push в свою ветку без вопроса: включать, только когда main защищён ruleset в GitHub.
+    push_without_asking: bool = False
+    # Сколько ждать ответа на вопрос или разрешение, потом «нет».
+    answer_timeout_min: float = 120
+    # С каких устройств можно поручать задачи и подтверждать (до speaker ID, M3).
+    allowed_devices: list[str] = ["server"]
+
+
 class Config(BaseModel):
     llm: LlmConfig = LlmConfig()
     assistant: AssistantConfig = AssistantConfig()
     home_assistant: HomeAssistantConfig = HomeAssistantConfig()
     video: VideoConfig = VideoConfig()
+    code: CodeConfig = CodeConfig()
     database: Path = Path("bayun.db")
     speaker_hint_window_s: float = 3.0
 
