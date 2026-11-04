@@ -81,6 +81,21 @@ class HintStore:
         return hint.speaker
 
 
+async def sse_events(announcements: Announcements, ping_s: float = 15) -> AsyncIterator[str]:
+    """Бесконечный поток SSE; без событий раз в `ping_s` — комментарий, чтобы связь не рвалась."""
+    queue = announcements.listen()
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), ping_s)
+            except TimeoutError:
+                yield ": ping\n\n"
+                continue
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        announcements.unlisten(queue)
+
+
 def create_app(
     config: Config | None = None,
     chat: ChatModel | None = None,
@@ -199,21 +214,7 @@ def create_app(
 
         `data: {"type": "announcement", ...}` или `data: {"type": "resolved", "id": ...}`.
         """
-        queue = announcements.listen()
-
-        async def events() -> AsyncIterator[str]:
-            try:
-                while True:
-                    try:
-                        event = await asyncio.wait_for(queue.get(), 15)
-                    except TimeoutError:
-                        yield ": ping\n\n"
-                        continue
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            finally:
-                announcements.unlisten(queue)
-
-        return StreamingResponse(events(), media_type="text/event-stream")
+        return StreamingResponse(sse_events(announcements), media_type="text/event-stream")
 
     @app.post("/converse")
     async def converse(request: ConverseRequest) -> ConverseResponse:

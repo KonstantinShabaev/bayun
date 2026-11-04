@@ -2,10 +2,11 @@ import asyncio
 import json
 from typing import Any
 
-from bayun_brain.api import create_app
+from bayun_brain.api import create_app, sse_events
 from bayun_brain.code.policy import Decision
 from bayun_brain.code.tasks import (
     Announcement,
+    Announcements,
     CodeTasks,
     Question,
     SessionRequest,
@@ -13,7 +14,6 @@ from bayun_brain.code.tasks import (
     pick_option,
 )
 from bayun_brain.config import CodeConfig
-from fastapi.testclient import TestClient
 
 CONFIG = CodeConfig(projects={"баюн": "/tmp/bayun-dev"})
 
@@ -149,14 +149,26 @@ def test_reply_to_announcement_skips_llm() -> None:
     assert calls[0] == ["через плеер"]
 
 
-def test_announcements_stream_replays_open_questions() -> None:
-    code = CodeTasks(CONFIG, FakeSession())
+async def test_announcements_stream_replays_open_questions() -> None:
+    # Поток бесконечный: читаем генератор напрямую, а не через TestClient, и закрываем сами.
+    announcements = Announcements()
     question = Announcement("Клод спрашивает: что выбрать?", expects_reply=True)
-    code.announcements.publish(question)
-    client = TestClient(create_app(code=code))
-    with client.stream("GET", "/announcements") as response:
-        assert response.headers["content-type"].startswith("text/event-stream")
-        line = next(line for line in response.iter_lines() if line.startswith("data:"))
-    event = json.loads(line.removeprefix("data:"))
-    assert event["id"] == question.id
-    assert event["conversation_id"] == f"code-{question.id}"
+    announcements.publish(question)
+    stream = sse_events(announcements, ping_s=0.01)
+    try:
+        first = await anext(stream)
+        assert first.startswith("data: ") and first.endswith("\n\n")
+        event = json.loads(first.removeprefix("data: "))
+        assert event["id"] == question.id
+        assert event["conversation_id"] == f"code-{question.id}"
+        assert await anext(stream) == ": ping\n\n"
+        announcements.resolve(question.id)
+        assert json.loads((await anext(stream)).removeprefix("data: "))["type"] == "resolved"
+    finally:
+        await stream.aclose()
+    assert not announcements._subscribers
+
+
+def test_announcements_route_is_registered() -> None:
+    paths = {getattr(route, "path", "") for route in create_app().routes}
+    assert "/announcements" in paths
