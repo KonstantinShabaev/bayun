@@ -24,6 +24,11 @@ from bayun_brain.intents import match
         ),
         ("Включи видео про рыбалку в ВК", "play_video", {"query": "рыбалку", "source": "vk"}),
         ("Включи второй", "play_result", {"n": 2}),
+        (
+            "Включи фильм Шерлок Холмс в вк",
+            "search_video",
+            {"query": "шерлок холмс", "source": "vk"},
+        ),
         ("Включи номер 5", "play_result", {"n": 5}),
         ("Нажми 12", "screen", {"action": "click", "n": 12}),
         ("Листай вниз", "screen", {"action": "scroll", "direction": "down"}),

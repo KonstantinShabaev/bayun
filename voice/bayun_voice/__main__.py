@@ -8,6 +8,7 @@ import argparse
 import itertools
 import logging
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
-from .audio import Ducker, Mic, Playback, Player, PlayerDucker, beep
+from .audio import Ducker, Frame, Mic, Playback, Player, PlayerDucker, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
@@ -28,6 +29,8 @@ from .wake import OpenWakeWord
 _LOGGER = logging.getLogger("bayun_voice")
 
 NEAR_MISS = 0.15
+
+STOP_WORDS = re.compile(r"\b(стоп|хватит|замолчи|помолчи|подожди|тихо|джарв\w*)\b")
 
 TROUBLE_SPEECH = "Что-то сломалось у меня внутри, загляни в журнал."
 
@@ -176,6 +179,9 @@ class VoiceLoop:
         player = Player(self.tts.rate, self.config.audio.output_device, self.status.level)
         self.mic.drain()
         self.wake.reset()
+        self.vad.reset()
+        self._barge: list[bytes] = []
+        self._barge_silence = 0
         first = True
         filler_played = False
         producing = True
@@ -219,7 +225,11 @@ class VoiceLoop:
         return False
 
     def heard_name(self) -> bool:
-        """Прогнать накопленные кадры микрофона через детектор имени."""
+        """Перебили ли: имя по детектору или «стоп/хватит» по короткому STT.
+
+        Эхоподавления нет, микрофон слышит и сам ответ из ТВ, поэтому любой речи
+        мало: распознаём кусок и ищем стоп-слово, которого в ответах не бывает.
+        """
         while True:
             try:
                 frame = self.mic.frames.get_nowait()
@@ -228,6 +238,27 @@ class VoiceLoop:
             if self.wake(frame) >= self.config.wake.threshold:
                 self.wake.reset()
                 return True
+            if self._barge_frame(frame):
+                return True
+
+    def _barge_frame(self, frame: Frame) -> bool:
+        speech = self.vad(frame) >= 0.5
+        if speech:
+            self._barge.append(frame.tobytes())
+            self._barge_silence = 0
+        elif self._barge:
+            self._barge_silence += 1
+        # Кусок закончен: пауза 0,3 с или уже 2 с речи.
+        if not self._barge or (self._barge_silence < 4 and len(self._barge) < 25):
+            return False
+        pcm, self._barge = b"".join(self._barge), []
+        if len(pcm) < 2 * 16000 * 0.25:
+            return False
+        text = self.asr.transcribe(pcm, 16000).lower()
+        if STOP_WORDS.search(text):
+            _LOGGER.info("Стоп-слово: %r", text)
+            return True
+        return False
 
     def say(self, text: str) -> None:
         self.say_raw(self.tts.synthesize(text))

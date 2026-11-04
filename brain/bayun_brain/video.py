@@ -98,8 +98,9 @@ TOOLS: list[dict[str, Any]] = [
 NAMES = frozenset(t["function"]["name"] for t in TOOLS)
 
 PROMPT = (
-    "\nЕсть телевизор с YouTube и VK Видео. «Включи …» — play_video, «найди, покажи "
-    "варианты» — search_video, потом play_result по номеру. Плеер — control_video, "
+    "\nЕсть телевизор с YouTube и VK Видео. Фильм, сериал, мультфильм или «найди» — "
+    "search_video, чтобы человек выбрал по номеру (потом play_result). Музыка, клип, "
+    "короткое видео — play_video сразу. Плеер — control_video, "
     "громкость ТВ — set_volume, всё остальное на экране — screen. Отвечай коротко."
 )
 
@@ -155,8 +156,8 @@ class Video:
             if name == "play_video":
                 await self._post(f"/{source}/play", {"n": results[0]["n"]})
                 return f"Включаю: {results[0]['title']}."
-            top = "; ".join(f"{r['n']} — {r['title']}" for r in results[:3])
-            return f"Нашёл, номера на экране. {top}. Какой включить?"
+            # Номера и так нарисованы на экране: список вслух только мешает.
+            return f"Нашёл {len(results)}, номера на экране. Какой включить?"
         if name == "play_result":
             await self._post(f"/{self._last_source}/play", {"n": int(args.get("n") or 1)})
             return "Включаю."

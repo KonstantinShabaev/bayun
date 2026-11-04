@@ -59,7 +59,7 @@ def test_vk_search_then_play_by_number() -> None:
     video = fake_agent(calls)
     chat = OneToolChat("search_video", {"query": "рыбалка", "source": "vk"})
     speech = ask("найди в вк рыбалку", video, chat)
-    assert speech.startswith("Нашёл") and "2 — Луна" in speech
+    assert speech == "Нашёл 2, номера на экране. Какой включить?"
     assert ask("Включи второй", video) == "Включаю."
     assert calls[-1] == ("/vk/play", {"n": 2})
 

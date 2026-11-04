@@ -51,8 +51,11 @@ _VOLUME = re.compile(
 )
 _PLAY = re.compile(
     r"^(?:включи|поставь|найди|покажи|запусти)\s+(?:мне\s+)?(?:на\s+(?:телевизоре|ютубе)\s+)?"
-    r"(?:видео|ролик|видос|фильм|клип|мультик|ютуб)\w*\s+(?:про\s+|о\s+|с\s+)?(?P<q>.+)$"
+    r"(?P<kind>видео|ролик|видос|фильм|кино|сериал|клип|мультик|мультфильм|ютуб)\w*\s+"
+    r"(?:про\s+|о\s+|с\s+)?(?P<q>.+)$"
 )
+
+_CHOOSE = {"фильм", "кино", "сериал", "мультфильм"}
 
 _FIXED: dict[str, Intent] = {}
 for _words, _intent in [
@@ -125,5 +128,8 @@ def match(text: str) -> Intent | None:
         vk = re.search(r"\b(?:в|на|из)\s+(?:вк|вконтакте|vk)(?:\s+видео)?\b", query)
         if vk:
             query = (query[: vk.start()] + query[vk.end() :]).strip()
-        return Intent("play_video", {"query": query, "source": "vk" if vk else "youtube"})
+        source = "vk" if vk else "youtube"
+        # Фильм выбирают: показываем варианты с номерами, а не включаем первый попавшийся.
+        tool = "search_video" if m.group("kind") in _CHOOSE else "play_video"
+        return Intent(tool, {"query": query, "source": source})
     return None
