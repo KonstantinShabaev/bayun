@@ -6,7 +6,9 @@ audio:
                             # после перезагрузки может выбрать выход USB-микрофона
 
 wake:
-  # Своей модели «Волтер» ещё нет: пока стандартная английская «hey jarvis».
+  # Своей модели «Волтер» ещё нет. Встроенные: hey_jarvis, alexa, hey_mycroft.
+  # Одним словом (jarvis, alfred, winston, computer) — из коллекции сообщества:
+  # https://github.com/fwartner/home-assistant-wakewords-collection, скачать .onnx в wakewords/
   model: "hey_jarvis"       # имя встроенной модели openWakeWord или путь к .onnx
   threshold: 0.5
 
