@@ -8,14 +8,16 @@ import argparse
 import itertools
 import logging
 import queue
+import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
-from .audio import Ducker, Mic, Playback, Player, beep
+from .audio import Ducker, Mic, PlayerDucker, Playback, Player, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
@@ -41,7 +43,12 @@ class VoiceLoop:
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
-        self.ducker = Ducker(config.audio.duck_volume)
+        audio = config.audio
+        self.ducker: Ducker | PlayerDucker = (
+            PlayerDucker(audio.duck_command, audio.duck_volume)
+            if audio.duck_command
+            else Ducker(audio.duck_volume)
+        )
         # «Угу» синтезируем заранее, чтобы оно звучало мгновенно.
         self.fillers = itertools.cycle(
             [self.tts.synthesize(f) for f in config.reply.fillers] or [b""]
@@ -55,6 +62,9 @@ class VoiceLoop:
         )
 
     def run(self) -> None:
+        self.ducker.recover()
+        # systemd и kill шлют SIGTERM: сначала вернуть громкость видео.
+        signal.signal(signal.SIGTERM, self._terminate)
         self.mic.start()
         self.status.set(phase="idle", wake_word=self.wake.name.replace("_", " "))
         while True:
@@ -83,6 +93,10 @@ class VoiceLoop:
             if score >= NEAR_MISS:
                 # Похоже на имя, но не дотянуло: по журналу видно, не занижен ли порог.
                 _LOGGER.info("Почти имя (%.2f)", score)
+
+    def _terminate(self, *_: object) -> None:
+        self.ducker.restore()
+        sys.exit(0)
 
     def wake_screen(self) -> None:
         command = self.config.audio.wake_screen_command

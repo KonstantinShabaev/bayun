@@ -197,10 +197,58 @@ class Ducker:
             self._saved[index] = volume
             _pactl("set-sink-input-volume", index, f"{round(self.volume * 100)}%")
 
+    def recover(self) -> None:
+        """После падения посреди разговора поток так и остался бы тихим, а PipeWire
+        ещё и запоминает громкость за приложением: возвращаем 100%."""
+        ducked = f"{round(self.volume * 100)}%"
+        for index, volume in _other_sink_inputs():
+            if volume == ducked:
+                _pactl("set-sink-input-volume", index, "100%")
+
     def restore(self) -> None:
         for index, volume in self._saved.items():
             _pactl("set-sink-input-volume", index, volume)
         self._saved.clear()
+
+
+class PlayerDucker:
+    """Приглушает видео в самом плеере (команда с --status и --volume N), не трогая
+    PipeWire: громкость потока там запоминается за приложением и залипает."""
+
+    def __init__(self, command: list[str], volume: float) -> None:
+        self.command = command
+        self.volume = volume
+        self._saved: int | None = None
+
+    def duck(self) -> None:
+        if self.volume >= 1 or self._saved is not None:
+            return
+        import json
+
+        try:
+            state = json.loads(self._run("--status"))
+        except json.JSONDecodeError:
+            return  # видео нет — приглушать нечего
+        if not state.get("playing"):
+            return
+        self._saved = int(state.get("volume", 100))
+        self._run("--volume", str(round(self._saved * self.volume)))
+
+    def restore(self) -> None:
+        if self._saved is not None:
+            self._run("--volume", str(self._saved))
+            self._saved = None
+
+    def recover(self) -> None:
+        pass
+
+    def _run(self, *args: str) -> str:
+        try:
+            return subprocess.run(
+                [*self.command, *args], capture_output=True, text=True, timeout=5, check=False
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
 
 
 def _pactl(*args: str) -> str:
