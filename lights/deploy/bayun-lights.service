@@ -1,0 +1,18 @@
+# Пользовательский сервис: ~/.config/systemd/user/bayun-lights.service
+#   systemctl --user daemon-reload && systemctl --user enable --now bayun-lights
+#   loginctl enable-linger $USER   # чтобы работал без входа в систему
+# Токен: ~/.config/bayun/lights.env с строкой BAYUN_LIGHTS_TOKEN=...
+[Unit]
+Description=Баюн: эффекты ламп по LAN
+After=network-online.target pipewire.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-%h/.config/bayun/lights.env
+# 192.168.122.1 — адрес хоста в сети libvirt, его видит ВМ с HA; из LAN сервис не виден
+ExecStart=%h/.local/share/bayun/lights-venv/bin/bayun-lights serve --host 192.168.122.1 --port 8775
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

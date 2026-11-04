@@ -1,0 +1,38 @@
+# Пакет HA: /config/packages/bayun_lights.yaml
+# В configuration.yaml: homeassistant: packages: !include_dir_named packages
+# В secrets.yaml: bayun_lights_auth: "Bearer <тот же токен, что в lights.env>"
+
+rest_command:
+  bayun_light_effect:
+    # лампы за диваном; сломанную W5K 2 (.59) не трогаем
+    url: "http://192.168.122.1:8775/effect/{{ effect }}?lamp=192.168.0.55&lamp=192.168.0.58"
+    method: post
+    headers:
+      Authorization: !secret bayun_lights_auth
+    timeout: 15
+
+input_select:
+  svet_za_divanom_effekt:
+    name: Эффект за диваном
+    icon: mdi:auto-fix
+    options:
+      - выкл
+      - радуга
+      - свеча
+      - дыхание
+      - светомузыка
+    initial: выкл
+
+automation:
+  - id: bayun_lights_effect
+    alias: Эффект за диваном
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.svet_za_divanom_effekt
+    actions:
+      - action: rest_command.bayun_light_effect
+        data:
+          effect: >-
+            {{ {'выкл': 'off', 'радуга': 'rainbow', 'свеча': 'candle',
+                'дыхание': 'breathe', 'светомузыка': 'music'}[trigger.to_state.state] }}
