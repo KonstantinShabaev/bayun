@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 
@@ -180,6 +181,53 @@ class Player:
             pass
         finally:
             self.finished.set()
+
+
+class Ducker:
+    """Приглушает чужие потоки PipeWire (видео в браузере) на время разговора."""
+
+    def __init__(self, volume: float) -> None:
+        self.volume = volume
+        self._saved: dict[str, str] = {}
+
+    def duck(self) -> None:
+        if self.volume >= 1 or self._saved:
+            return
+        for index, volume in _other_sink_inputs():
+            self._saved[index] = volume
+            _pactl("set-sink-input-volume", index, f"{round(self.volume * 100)}%")
+
+    def restore(self) -> None:
+        for index, volume in self._saved.items():
+            _pactl("set-sink-input-volume", index, volume)
+        self._saved.clear()
+
+
+def _pactl(*args: str) -> str:
+    try:
+        return subprocess.run(
+            ["pactl", *args], capture_output=True, text=True, timeout=3, check=False
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def _other_sink_inputs() -> list[tuple[str, str]]:
+    """(номер, громкость) потоков, кроме собственных."""
+    import json
+
+    try:
+        inputs = json.loads(_pactl("--format=json", "list", "sink-inputs") or "[]")
+    except json.JSONDecodeError:
+        return []
+    found = []
+    for item in inputs:
+        if item.get("properties", {}).get("application.name") == "bayun-voice":
+            continue
+        channels = item.get("volume", {})
+        first: dict[str, Any] = next(iter(channels.values()), {}) if channels else {}
+        found.append((str(item["index"]), first.get("value_percent", "100%")))
+    return found
 
 
 def beep(rate: int, freq: float = 880.0, duration_s: float = 0.12, volume: float = 0.3) -> bytes:

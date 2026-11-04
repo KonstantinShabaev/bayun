@@ -4,6 +4,8 @@ audio:
                             # с эхоподавлением: "bayun_aec_source" (deploy/voice-dev)
   output_device: null       # null — выход по умолчанию; лучше указать явно, PipeWire
                             # после перезагрузки может выбрать выход USB-микрофона
+  duck_volume: 0.2          # видео и прочий звук тише на время разговора; 1 — не трогать
+  wake_screen_command: []   # будит ТВ и ставит вход, например ["/home/walter/bayun/bin/tv-open", "--input-only"]
 
 wake:
   # Своей модели «Волтер» ещё нет. Встроенные: hey_jarvis, alexa, hey_mycroft.

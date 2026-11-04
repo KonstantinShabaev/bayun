@@ -9,6 +9,11 @@ from pydantic import BaseModel
 class AudioConfig(BaseModel):
     input_device: str | None = None
     output_device: str | None = None
+    # Пока идёт разговор, остальной звук (видео) приглушается до этой доли. 1 — не трогать.
+    duck_volume: float = 0.2
+    # Команда, которая будит экран и ставит нужный вход ТВ, чтобы голос было слышно.
+    # Запускается в фоне, когда услышано имя. Пусто — ничего.
+    wake_screen_command: list[str] = []
 
 
 class WakeConfig(BaseModel):

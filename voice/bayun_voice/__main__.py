@@ -8,13 +8,14 @@ import argparse
 import itertools
 import logging
 import queue
+import subprocess
 import threading
 import time
 from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
-from .audio import Mic, Playback, Player, beep
+from .audio import Ducker, Mic, Playback, Player, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
@@ -38,6 +39,7 @@ class VoiceLoop:
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
+        self.ducker = Ducker(config.audio.duck_volume)
         # «Угу» синтезируем заранее, чтобы оно звучало мгновенно.
         self.fillers = itertools.cycle(
             [self.tts.synthesize(f) for f in config.reply.fillers] or [b""]
@@ -55,7 +57,12 @@ class VoiceLoop:
         self.status.set(phase="idle", wake_word=self.wake.name.replace("_", " "))
         while True:
             if self.wait_for_wake():
-                self.conversation()
+                self.wake_screen()
+                self.ducker.duck()
+                try:
+                    self.conversation()
+                finally:
+                    self.ducker.restore()
 
     def wait_for_wake(self) -> bool:
         while True:
@@ -71,6 +78,14 @@ class VoiceLoop:
             if score >= self.config.wake.threshold:
                 _LOGGER.info("Имя услышано (%.2f)", score)
                 return True
+
+    def wake_screen(self) -> None:
+        command = self.config.audio.wake_screen_command
+        if command:
+            try:
+                subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as error:
+                _LOGGER.warning("Не смог разбудить экран: %s", error)
 
     def conversation(self) -> None:
         turn = Turn()

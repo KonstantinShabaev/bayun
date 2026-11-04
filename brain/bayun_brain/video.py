@@ -100,7 +100,7 @@ class Video:
             proc = await asyncio.create_subprocess_exec(
                 *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
             )
-            _, err = await asyncio.wait_for(proc.communicate(), timeout=15)
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=60)
         except (OSError, TimeoutError) as error:
             _LOGGER.error("%s: %s", command[0], error)
             return "Телевизор не отозвался."
