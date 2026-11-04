@@ -4,7 +4,8 @@
 
 rest_command:
   bayun_light_effect:
-    url: "http://192.168.122.1:8775/effect/{{ effect }}"
+    # лампы за диваном; сломанную W5K 2 (.59) не трогаем
+    url: "http://192.168.122.1:8775/effect/{{ effect }}?lamp=192.168.0.55&lamp=192.168.0.58"
     method: post
     headers:
       Authorization: !secret bayun_lights_auth
