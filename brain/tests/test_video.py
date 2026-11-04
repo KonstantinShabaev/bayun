@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -39,13 +40,25 @@ def test_play_video_opens_first_result(tmp_path: Path) -> None:
         assert query == "лофи"
         return Found("https://www.youtube.com/watch?v=abc", "Лофи радио")
 
-    chat = OneToolChat("play_video", {"query": "лофи"})
-    video = Video(command, [*command, "--home"], search)
-    client = TestClient(create_app(Config(), chat, None, video))
-    client.post("/converse", json={"text": "включи лофи"})
+    async def scenario() -> str:
+        video = Video(command, [], search)
+        said = await video.run("play_video", {"query": "лофи"})
+        await asyncio.gather(*video._background)
+        return said
 
+    assert asyncio.run(scenario()) == "Включаю: Лофи радио."
     assert log.read_text() == "https://www.youtube.com/watch?v=abc\n"
-    assert chat.seen[1][-1]["content"] == "Включено: Лофи радио."
+
+
+def test_fast_command_skips_llm(tmp_path: Path) -> None:
+    command, log = recorder(tmp_path)
+    chat = OneToolChat("never", {})
+    video = Video(command, [], player_command=command)
+    client = TestClient(create_app(Config(), chat, None, video))
+    speech = client.post("/converse", json={"text": "Джарвис, пауза."}).json()["speech"]
+    assert speech == "Пауза."
+    assert chat.seen == []
+    assert log.read_text() == "--pause\n"
 
 
 def test_stop_video_returns_home(tmp_path: Path) -> None:
@@ -57,20 +70,20 @@ def test_stop_video_returns_home(tmp_path: Path) -> None:
 
 
 def test_failing_tv_is_reported() -> None:
-    async def search(query: str) -> Found | None:
-        return Found("https://youtu.be/x", "x")
-
-    chat = OneToolChat("play_video", {"query": "x"})
-    video = Video([sys.executable, "-c", "raise SystemExit(1)"], [], search)
-    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "x"})
-    assert chat.seen[1][-1]["content"] == "Телевизор не отозвался."
+    chat = OneToolChat("stop_video", {})
+    video = Video([], [sys.executable, "-c", "raise SystemExit(1)"])
+    client = TestClient(create_app(Config(), chat, None, video))
+    speech = client.post("/converse", json={"text": "x"}).json()["speech"]
+    assert speech == "Телевизор не отозвался."
 
 
 def test_volume_up_presses_tv_keys(tmp_path: Path) -> None:
     command, log = recorder(tmp_path)
     chat = OneToolChat("set_volume", {"direction": "up", "steps": 2})
     video = Video(command, [], volume_command=command)
-    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "громче"})
+    TestClient(create_app(Config(), chat, None, video)).post(
+        "/converse", json={"text": "чуть громче бы"}
+    )
     assert log.read_text() == "KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP\n"
 
 
@@ -80,3 +93,16 @@ def test_seek_back(tmp_path: Path) -> None:
     video = Video(command, [], player_command=command)
     TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "назад"})
     assert log.read_text() == "--seek -30\n"
+
+
+class SearchChat(OneToolChat):
+    async def search(self, question: str) -> str:
+        return f"Ответ на «{question}»."
+
+
+def test_web_search_answer_is_spoken_directly() -> None:
+    chat = SearchChat("web_search", {"question": "погода в Москве"})
+    client = TestClient(create_app(Config(), chat))
+    speech = client.post("/converse", json={"text": "какая погода"}).json()["speech"]
+    assert speech == "Ответ на «погода в Москве»."
+    assert len(chat.seen) == 1

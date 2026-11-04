@@ -92,6 +92,20 @@ class LiteLlmChat:
         ]
         return Completion(message.content or "", calls)
 
+    async def search(self, question: str) -> str:
+        """Ответ с поиском в интернете (серверный web search провайдера), уже для речи."""
+        import litellm
+
+        messages: list[Message] = [
+            {"role": "system", "content": SEARCH_PROMPT},
+            {"role": "user", "content": question},
+        ]
+        response = await litellm.acompletion(
+            **{**self._kwargs(messages), "timeout": max(self.config.timeout_s, 30)},
+            web_search_options={"search_context_size": "low"},
+        )
+        return str(response.choices[0].message.content or "")
+
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         import litellm
 
@@ -169,6 +183,33 @@ async def reply_sentences(model: ChatModel, messages: list[Message]) -> AsyncIte
 
 
 RunTool = Callable[[ToolCall], Awaitable[str]]
+
+
+class Final(str):
+    """Итог инструмента, который сразу произносится: без ещё одного круга LLM."""
+
+
+SEARCH_PROMPT = (
+    "Найди в интернете ответ на вопрос и ответь по-русски для озвучки: одно-два "
+    "коротких предложения, без ссылок, списков, скобок и названий сайтов. Числа "
+    "пиши цифрами, единицы словами: «плюс два градуса»."
+)
+
+WEB_SEARCH_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": (
+            "Поиск в интернете: погода, новости, курсы, расписания, факты, которых ты "
+            "не знаешь точно или которые меняются. Ответ сразу произносится."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"question": {"type": "string", "description": "вопрос целиком"}},
+            "required": ["question"],
+        },
+    },
+}
 MAX_TOOL_ROUNDS = 3
 
 
@@ -197,9 +238,15 @@ async def agent_sentences(
                 ],
             }
         )
+        finals: list[str] = []
         for call in result.tool_calls:
             output = await run_tool(call)
-            messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": str(output)})
+            if isinstance(output, Final):
+                finals.append(output)
+        if finals:
+            text = " ".join(finals)
+            break
     splitter = SentenceSplitter()
     for sentence in [*splitter.feed(text), *splitter.flush()]:
         if cleaned := clean_for_speech(sentence):

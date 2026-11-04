@@ -48,13 +48,18 @@ TOOLS: list[dict[str, Any]] = [
             "name": "control_video",
             "description": (
                 "Плеер на телевизоре: pause — пауза, play — продолжить, "
-                "seek — перемотать на seconds (+вперёд, -назад), next — следующее видео."
+                "seek — перемотать на seconds (+вперёд, -назад), next — следующее видео, "
+                "volume — громкость самого ролика level_pct 0–100 (снимает mute в видео)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["pause", "play", "seek", "next"]},
+                    "action": {
+                        "type": "string",
+                        "enum": ["pause", "play", "seek", "next", "volume"],
+                    },
                     "seconds": {"type": "number"},
+                    "level_pct": {"type": "integer", "minimum": 0, "maximum": 100},
                 },
                 "required": ["action"],
             },
@@ -80,7 +85,13 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-PLAYER_DONE = {"pause": "Пауза.", "play": "Продолжаю.", "seek": "Перемотал.", "next": "Следующее."}
+PLAYER_DONE = {
+    "pause": "Пауза.",
+    "play": "Продолжаю.",
+    "seek": "Перемотал.",
+    "next": "Следующее.",
+    "volume": "Громкость ролика изменена.",
+}
 VOLUME_KEYS = {"up": "KEYCODE_VOLUME_UP", "down": "KEYCODE_VOLUME_DOWN", "mute": "KEYCODE_MUTE"}
 
 PROMPT = (
@@ -121,6 +132,7 @@ class Video:
         self.home_command = home_command
         self.volume_command = volume_command or []
         self.search = search
+        self._background: set[asyncio.Task[str]] = set()
 
     async def run(self, name: str, args: dict[str, Any]) -> str:
         if name == "set_volume":
@@ -141,7 +153,11 @@ class Video:
             return "YouTube сейчас не отвечает."
         if found is None:
             return f"По запросу «{query}» ничего не нашлось."
-        return await self._exec([*self.open_command, found.url], f"Включено: {found.title}.")
+        # Ждать, пока ролик заиграет, долго (до 15 с): открываем в фоне и сразу отвечаем.
+        task = asyncio.create_task(self._exec([*self.open_command, found.url], ""))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+        return f"Включаю: {found.title}."
 
     async def _player(self, args: dict[str, Any]) -> str:
         action = args.get("action")
@@ -153,6 +169,8 @@ class Video:
             if not seconds:
                 return "Не сказали, на сколько перемотать."
             flags.append(f"{seconds:+g}")
+        if action == "volume":
+            flags.append(str(max(0, min(100, int(args.get("level_pct") or 100)))))
         outcome = await self._exec([*self.player_command, *flags], PLAYER_DONE[str(action)])
         return outcome.replace("Телевизор не отозвался.", "Видео сейчас не играет.")
 

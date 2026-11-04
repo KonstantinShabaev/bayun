@@ -11,15 +11,17 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import __version__
+from . import __version__, intents
 from .config import Config
 from .ha import TOOL, Device, HomeAssistant, devices_prompt, parse_args
 from .llm import (
     AUDIO_TAGS_PROMPT,
     NO_HOME_PROMPT,
     SYSTEM_PROMPT,
+    WEB_SEARCH_TOOL,
     ChatModel,
     Conversations,
+    Final,
     ToolCall,
     agent_sentences,
     reply_sentences,
@@ -88,6 +90,16 @@ def create_app(
 
     async def sentences(request: ConverseRequest, conversation_id: str) -> AsyncIterator[str]:
         speaker = hints.speaker_for(time.time())
+        if video is not None and (intent := intents.match(request.text)):
+            started = time.monotonic()
+            outcome = await video.run(intent.tool, intent.args)
+            _LOGGER.info(
+                "Быстрая команда %s %s за %.2f с: %s",
+                intent.tool, intent.args, time.monotonic() - started, outcome,
+            )  # fmt: skip
+            conversations.remember(conversation_id, request.text, outcome)
+            yield outcome
+            return
         if chat is None:
             name = "" if speaker == "guest" else f"{speaker}, "
             yield f"{name}я пока учусь и ещё ничего не умею."
@@ -105,6 +117,9 @@ def create_app(
         else:
             system += NO_HOME_PROMPT
         tools = [TOOL] if devices else []
+        search = getattr(chat, "search", None)
+        if search is not None:
+            tools.append(WEB_SEARCH_TOOL)
         if video is not None:
             system += VIDEO_PROMPT
             tools += VIDEO_TOOLS
@@ -125,7 +140,10 @@ def create_app(
                     call.name in ("play_video", "stop_video", "control_video", "set_volume")
                     and video is not None
                 ):
-                    outcome = await video.run(call.name, args)
+                    outcome = Final(await video.run(call.name, args))
+                elif call.name == "web_search" and search is not None:
+                    question = str(args.get("question") or request.text)
+                    outcome = Final(await search(question))
                 else:
                     outcome = "Нет такого инструмента."
                 _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
