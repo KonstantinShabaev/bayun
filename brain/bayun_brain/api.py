@@ -13,7 +13,17 @@ from pydantic import BaseModel
 
 from . import __version__
 from .config import Config
-from .llm import AUDIO_TAGS_PROMPT, SYSTEM_PROMPT, ChatModel, Conversations, reply_sentences
+from .ha import TOOL, Device, HomeAssistant, devices_prompt, parse_args
+from .llm import (
+    AUDIO_TAGS_PROMPT,
+    NO_HOME_PROMPT,
+    SYSTEM_PROMPT,
+    ChatModel,
+    Conversations,
+    ToolCall,
+    agent_sentences,
+    reply_sentences,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,8 +70,12 @@ class HintStore:
         return hint.speaker
 
 
-def create_app(config: Config | None = None, chat: ChatModel | None = None) -> FastAPI:
-    """`chat=None` — заглушка без LLM (тесты, стенд без ключа)."""
+def create_app(
+    config: Config | None = None,
+    chat: ChatModel | None = None,
+    home: HomeAssistant | None = None,
+) -> FastAPI:
+    """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома."""
     config = config or Config()
     app = FastAPI(title="bayun-brain", version=__version__)
     hints = HintStore(window_s=config.speaker_hint_window_s)
@@ -75,6 +89,16 @@ def create_app(config: Config | None = None, chat: ChatModel | None = None) -> F
             return
 
         system = SYSTEM_PROMPT.format(name=config.assistant.name)
+        devices: list[Device] = []
+        if home is not None:
+            try:
+                devices = await home.devices()
+                system += devices_prompt(devices)
+            except Exception:
+                _LOGGER.exception("Home Assistant не ответил")
+                system += "\nHome Assistant сейчас недоступен, устройствами управлять нельзя."
+        else:
+            system += NO_HOME_PROMPT
         if request.audio_tags:
             system += AUDIO_TAGS_PROMPT
         if speaker != "guest":
@@ -83,7 +107,20 @@ def create_app(config: Config | None = None, chat: ChatModel | None = None) -> F
         said: list[str] = []
         started = time.monotonic()
         try:
-            async for sentence in reply_sentences(chat, messages):
+
+            async def run_tool(call: ToolCall) -> str:
+                assert home is not None
+                args = parse_args(call.arguments)
+                outcome = await home.control(devices, args)
+                _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
+                return outcome
+
+            source = (
+                agent_sentences(chat, messages, [TOOL], run_tool)
+                if devices
+                else reply_sentences(chat, messages)
+            )
+            async for sentence in source:
                 if not said:
                     _LOGGER.info("Первая фраза через %.2f с", time.monotonic() - started)
                 said.append(sentence)

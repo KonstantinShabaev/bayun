@@ -8,6 +8,7 @@ import uvicorn
 
 from .api import create_app
 from .config import load_config
+from .ha import HomeAssistant
 from .llm import ChatModel, LiteLlmChat
 
 
@@ -22,7 +23,9 @@ def run() -> None:
     logging.basicConfig(level=logging.INFO)
     config = load_config(args.config)
     chat: ChatModel | None = None if args.no_llm else LiteLlmChat(config)
-    uvicorn.run(create_app(config, chat), host=args.host, port=args.port)
+    token = config.home_assistant.resolved_token()
+    home = HomeAssistant(config.home_assistant.url, token) if token else None
+    uvicorn.run(create_app(config, chat, home), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

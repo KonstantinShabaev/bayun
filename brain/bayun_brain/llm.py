@@ -1,11 +1,12 @@
 """Разговор с LLM через LiteLLM: ответ потоком, нарезанный на предложения.
 
 Первое предложение уходит в TTS, пока модель пишет второе (architecture §6).
-Агента с инструментами здесь пока нет, только характер и рабочая память.
+С инструментами (дом) — короткий цикл: модель → вызовы → модель, потом ответ по предложениям.
 """
 
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .config import Config
@@ -17,7 +18,9 @@ SYSTEM_PROMPT = """\
 Твой ответ сразу озвучивается синтезатором речи, поэтому:
 - одна-три короткие фразы, если не просят подробнее;
 - никакого markdown, списков, эмодзи и ссылок;
-- числа, единицы и сокращения пиши так, как их произносят.
+- числа, единицы и сокращения пиши так, как их произносят."""
+
+NO_HOME_PROMPT = """
 Управлять устройствами дома ты пока не умеешь: если просят, честно скажи, \
 что этому тебя ещё учат."""
 
@@ -28,13 +31,30 @@ AUDIO_TAGS_PROMPT = """
 [excited], [sarcastic], [curious], [surprised]. Смейся, когда правда смешно, \
 не больше одного-двух тегов на ответ."""
 
-Message = dict[str, str]
+Message = dict[str, Any]
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str | dict[str, Any]
+
+
+@dataclass
+class Completion:
+    text: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
 
 class ChatModel(Protocol):
-    """Источник токенов ответа. В тестах подменяется фейком."""
+    """Источник ответа. В тестах подменяется фейком."""
 
     def stream(self, messages: list[Message]) -> AsyncIterator[str]: ...
+
+    async def complete(
+        self, messages: list[Message], tools: list[dict[str, Any]]
+    ) -> Completion: ...
 
 
 class LiteLlmChat:
@@ -44,21 +64,38 @@ class LiteLlmChat:
 
         self.config = config.llm
 
-    async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
-        import litellm
-
+    def _kwargs(self, messages: list[Message]) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": self.config.main,
             "messages": messages,
-            "stream": True,
             "max_tokens": self.config.max_tokens,
             "timeout": self.config.timeout_s,
+            # Anthropic иногда отвечает overloaded: повтор, потом запасная модель.
+            "num_retries": 1,
         }
+        if self.config.fallbacks:
+            kwargs["fallbacks"] = self.config.fallbacks
         if self.config.api_base:
             kwargs["api_base"] = self.config.api_base
         if self.config.api_key:
             kwargs["api_key"] = self.config.api_key
-        response = await litellm.acompletion(**kwargs)
+        return kwargs
+
+    async def complete(self, messages: list[Message], tools: list[dict[str, Any]]) -> Completion:
+        import litellm
+
+        response = await litellm.acompletion(**self._kwargs(messages), tools=tools)
+        message = response.choices[0].message
+        calls = [
+            ToolCall(c.id, c.function.name, c.function.arguments)
+            for c in (message.tool_calls or [])
+        ]
+        return Completion(message.content or "", calls)
+
+    async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
+        import litellm
+
+        response = await litellm.acompletion(**self._kwargs(messages), stream=True)
         async for chunk in response:
             delta = chunk.choices[0].delta.content
             if delta:
@@ -129,3 +166,47 @@ async def reply_sentences(model: ChatModel, messages: list[Message]) -> AsyncIte
     for sentence in splitter.flush():
         if cleaned := clean_for_speech(sentence):
             yield cleaned
+
+
+RunTool = Callable[[ToolCall], Awaitable[str]]
+MAX_TOOL_ROUNDS = 3
+
+
+async def agent_sentences(
+    model: ChatModel, messages: list[Message], tools: list[dict[str, Any]], run_tool: RunTool
+) -> AsyncIterator[str]:
+    """Модель с инструментами: вызывает их, пока нужно, и отдаёт итоговый текст."""
+    messages = list(messages)
+    text = ""
+    for _ in range(MAX_TOOL_ROUNDS):
+        result = await model.complete(messages, tools)
+        text = result.text
+        if not result.tool_calls:
+            break
+        messages.append(
+            {
+                "role": "assistant",
+                "content": result.text or None,
+                "tool_calls": [
+                    {
+                        "id": c.id,
+                        "type": "function",
+                        "function": {"name": c.name, "arguments": _as_json(c.arguments)},
+                    }
+                    for c in result.tool_calls
+                ],
+            }
+        )
+        for call in result.tool_calls:
+            output = await run_tool(call)
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
+    splitter = SentenceSplitter()
+    for sentence in [*splitter.feed(text), *splitter.flush()]:
+        if cleaned := clean_for_speech(sentence):
+            yield cleaned
+
+
+def _as_json(arguments: str | dict[str, Any]) -> str:
+    import json
+
+    return arguments if isinstance(arguments, str) else json.dumps(arguments, ensure_ascii=False)

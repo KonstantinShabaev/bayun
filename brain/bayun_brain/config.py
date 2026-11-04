@@ -12,6 +12,8 @@ class LlmConfig(BaseModel):
     api_base: str | None = None
     # Ключ шлюза (LITELLM_MASTER_KEY). Без шлюза LiteLLM берёт ключ провайдера из окружения.
     api_key: str | None = None
+    # Если основная модель перегружена или недоступна.
+    fallbacks: list[str] = []
     max_tokens: int = 400
     timeout_s: float = 20.0
 
@@ -26,6 +28,15 @@ class AssistantConfig(BaseModel):
 class HomeAssistantConfig(BaseModel):
     url: str = "http://homeassistant.local:8123"
     token: str = ""
+    # Или файл с токеном (права 600), чтобы не держать его в конфиге.
+    token_file: Path | None = None
+
+    def resolved_token(self) -> str:
+        if self.token:
+            return self.token
+        if self.token_file and self.token_file.expanduser().exists():
+            return self.token_file.expanduser().read_text(encoding="utf-8").strip()
+        return ""
 
 
 class Config(BaseModel):

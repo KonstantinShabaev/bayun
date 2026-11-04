@@ -2,6 +2,7 @@
 # Ключ — в ~/.config/bayun/brain.env: ANTHROPIC_API_KEY=...
 llm:
   main: "anthropic/claude-haiku-5-5"
+  fallbacks: ["anthropic/claude-sonnet-5-5"]
   max_tokens: 400
   timeout_s: 20
 
@@ -9,3 +10,7 @@ assistant:
   name: "Волтер"
 
 database: "bayun.db"
+
+home_assistant:
+  url: "http://127.0.0.1:8123"   # HA в ВМ, проброшен на хост
+  token_file: "~/.config/bayun/ha_token"
