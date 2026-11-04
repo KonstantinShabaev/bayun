@@ -72,3 +72,11 @@ def test_volume_up_presses_tv_keys(tmp_path: Path) -> None:
     video = Video(command, [], volume_command=command)
     TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "громче"})
     assert log.read_text() == "KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP\n"
+
+
+def test_seek_back(tmp_path: Path) -> None:
+    command, log = recorder(tmp_path)
+    chat = OneToolChat("control_video", {"action": "seek", "seconds": -30})
+    video = Video(command, [], player_command=command)
+    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "назад"})
+    assert log.read_text() == "--seek -30\n"

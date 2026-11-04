@@ -45,9 +45,19 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "pause_video",
-            "description": "Ставит видео на телевизоре на паузу (resume=true — продолжает).",
-            "parameters": {"type": "object", "properties": {"resume": {"type": "boolean"}}},
+            "name": "control_video",
+            "description": (
+                "Плеер на телевизоре: pause — пауза, play — продолжить, "
+                "seek — перемотать на seconds (+вперёд, -назад), next — следующее видео."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["pause", "play", "seek", "next"]},
+                    "seconds": {"type": "number"},
+                },
+                "required": ["action"],
+            },
         },
     },
     {
@@ -70,11 +80,13 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+PLAYER_DONE = {"pause": "Пауза.", "play": "Продолжаю.", "seek": "Перемотал.", "next": "Следующее."}
 VOLUME_KEYS = {"up": "KEYCODE_VOLUME_UP", "down": "KEYCODE_VOLUME_DOWN", "mute": "KEYCODE_MUTE"}
 
 PROMPT = (
     "\nЕсть телевизор: включить на нём видео — play_video с запросом для YouTube, "
-    "выключить — stop_video, пауза — pause_video, громкость — set_volume. Назови, что включил."
+    "выключить — stop_video, пауза и перемотка — control_video, громкость — set_volume. "
+    "Назови, что включил."
 )
 
 
@@ -102,11 +114,9 @@ class Video:
         home_command: list[str],
         search: Search = youtube_search,
         volume_command: list[str] | None = None,
-        pause_command: list[str] | None = None,
-        resume_command: list[str] | None = None,
+        player_command: list[str] | None = None,
     ) -> None:
-        self.pause_command = pause_command or []
-        self.resume_command = resume_command or []
+        self.player_command = player_command or []
         self.open_command = open_command
         self.home_command = home_command
         self.volume_command = volume_command or []
@@ -115,11 +125,8 @@ class Video:
     async def run(self, name: str, args: dict[str, Any]) -> str:
         if name == "set_volume":
             return await self._volume(args)
-        if name == "pause_video":
-            command = self.resume_command if args.get("resume") else self.pause_command
-            if not command:
-                return "Паузу ставить не умею."
-            return await self._exec(command, "Продолжаю." if args.get("resume") else "Пауза.")
+        if name == "control_video":
+            return await self._player(args)
         if name == "stop_video":
             if not self.home_command:
                 return "Не умею выключать видео."
@@ -135,6 +142,19 @@ class Video:
         if found is None:
             return f"По запросу «{query}» ничего не нашлось."
         return await self._exec([*self.open_command, found.url], f"Включено: {found.title}.")
+
+    async def _player(self, args: dict[str, Any]) -> str:
+        action = args.get("action")
+        if not self.player_command or action not in PLAYER_DONE:
+            return "Так плеером управлять не умею."
+        flags = [f"--{action}"]
+        if action == "seek":
+            seconds = float(args.get("seconds") or 0)
+            if not seconds:
+                return "Не сказали, на сколько перемотать."
+            flags.append(f"{seconds:+g}")
+        outcome = await self._exec([*self.player_command, *flags], PLAYER_DONE[str(action)])
+        return outcome.replace("Телевизор не отозвался.", "Видео сейчас не играет.")
 
     async def _volume(self, args: dict[str, Any]) -> str:
         key = VOLUME_KEYS.get(str(args.get("direction")))

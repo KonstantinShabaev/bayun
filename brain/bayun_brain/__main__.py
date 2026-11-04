@@ -32,8 +32,7 @@ def run() -> None:
             video_config.open_command,
             video_config.home_command,
             volume_command=video_config.volume_command,
-            pause_command=video_config.pause_command,
-            resume_command=video_config.resume_command,
+            player_command=video_config.player_command,
         )
         if video_config.open_command
         else None
