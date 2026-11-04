@@ -19,7 +19,7 @@ bayun-voice — голосовой цикл прямо на сервере с US
 ## Запуск на сервере
 
 ```sh
-uv sync --extra local --package bayun-voice --package bayun-brain --extra llm
+uv sync --extra local --package bayun-voice --package bayun-brain --extra llm --extra video
 uv run python -m piper.download_voices --download-dir voices ru_RU-dmitri-medium
 cp voice/config.example.yaml voice/config.yaml
 uv run bayun-brain --config brain/config.yaml &       # или --no-llm без ключа

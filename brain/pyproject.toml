@@ -13,6 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 llm = ["litellm>=1.50"]
+video = ["yt-dlp>=2025.1"]
 
 [project.scripts]
 bayun-brain = "bayun_brain.__main__:run"

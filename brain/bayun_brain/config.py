@@ -39,10 +39,19 @@ class HomeAssistantConfig(BaseModel):
         return ""
 
 
+class VideoConfig(BaseModel):
+    # Команда, открывающая URL на телевизоре (получает URL последним аргументом).
+    # Пусто — видео выключено.
+    open_command: list[str] = []
+    # Вернуть на телевизор экран Баюна.
+    home_command: list[str] = []
+
+
 class Config(BaseModel):
     llm: LlmConfig = LlmConfig()
     assistant: AssistantConfig = AssistantConfig()
     home_assistant: HomeAssistantConfig = HomeAssistantConfig()
+    video: VideoConfig = VideoConfig()
     database: Path = Path("bayun.db")
     speaker_hint_window_s: float = 3.0
 

@@ -10,6 +10,7 @@ from .api import create_app
 from .config import load_config
 from .ha import HomeAssistant
 from .llm import ChatModel, LiteLlmChat
+from .video import Video
 
 
 def run() -> None:
@@ -25,7 +26,13 @@ def run() -> None:
     chat: ChatModel | None = None if args.no_llm else LiteLlmChat(config)
     token = config.home_assistant.resolved_token()
     home = HomeAssistant(config.home_assistant.url, token) if token else None
-    uvicorn.run(create_app(config, chat, home), host=args.host, port=args.port)
+    video_config = config.video
+    video = (
+        Video(video_config.open_command, video_config.home_command)
+        if video_config.open_command
+        else None
+    )
+    uvicorn.run(create_app(config, chat, home, video), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

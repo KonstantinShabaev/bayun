@@ -14,3 +14,8 @@ database: "bayun.db"
 home_assistant:
   url: "http://127.0.0.1:8123"   # HA в ВМ, проброшен на хост
   token_file: "~/.config/bayun/ha_token"
+
+video:
+  # Открывает URL в киоске Chromium на ТВ и переключает вход (делает серверная часть).
+  open_command: ["/home/walter/bayun/bin/tv-open"]
+  home_command: ["/home/walter/bayun/bin/tv-open", "--home"]

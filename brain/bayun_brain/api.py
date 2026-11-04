@@ -24,6 +24,9 @@ from .llm import (
     agent_sentences,
     reply_sentences,
 )
+from .video import PROMPT as VIDEO_PROMPT
+from .video import TOOLS as VIDEO_TOOLS
+from .video import Video
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,8 +77,10 @@ def create_app(
     config: Config | None = None,
     chat: ChatModel | None = None,
     home: HomeAssistant | None = None,
+    video: Video | None = None,
 ) -> FastAPI:
-    """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома."""
+    """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома,
+    `video=None` — без телевизора."""
     config = config or Config()
     app = FastAPI(title="bayun-brain", version=__version__)
     hints = HintStore(window_s=config.speaker_hint_window_s)
@@ -99,6 +104,10 @@ def create_app(
                 system += "\nHome Assistant сейчас недоступен, устройствами управлять нельзя."
         else:
             system += NO_HOME_PROMPT
+        tools = [TOOL] if devices else []
+        if video is not None:
+            system += VIDEO_PROMPT
+            tools += VIDEO_TOOLS
         if request.audio_tags:
             system += AUDIO_TAGS_PROMPT
         if speaker != "guest":
@@ -109,15 +118,19 @@ def create_app(
         try:
 
             async def run_tool(call: ToolCall) -> str:
-                assert home is not None
                 args = parse_args(call.arguments)
-                outcome = await home.control(devices, args)
+                if call.name == "control_device" and home is not None:
+                    outcome = await home.control(devices, args)
+                elif call.name in ("play_video", "stop_video") and video is not None:
+                    outcome = await video.run(call.name, args)
+                else:
+                    outcome = "Нет такого инструмента."
                 _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
                 return outcome
 
             source = (
-                agent_sentences(chat, messages, [TOOL], run_tool)
-                if devices
+                agent_sentences(chat, messages, tools, run_tool)
+                if tools
                 else reply_sentences(chat, messages)
             )
             async for sentence in source:
