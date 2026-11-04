@@ -28,7 +28,11 @@ def run() -> None:
     home = HomeAssistant(config.home_assistant.url, token) if token else None
     video_config = config.video
     video = (
-        Video(video_config.open_command, video_config.home_command)
+        Video(
+            video_config.open_command,
+            video_config.home_command,
+            volume_command=video_config.volume_command,
+        )
         if video_config.open_command
         else None
     )

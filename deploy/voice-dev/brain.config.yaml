@@ -19,3 +19,5 @@ video:
   # Открывает URL в киоске Chromium на ТВ и переключает вход (делает серверная часть).
   open_command: ["/home/walter/bayun/bin/tv-open"]
   home_command: ["/home/walter/bayun/bin/tv-open", "--home"]
+  volume_command:
+    ["/home/walter/.local/share/bayun/atv-venv/bin/python", "/home/walter/.config/bayun/androidtv/key.py"]

@@ -64,3 +64,11 @@ def test_failing_tv_is_reported() -> None:
     video = Video([sys.executable, "-c", "raise SystemExit(1)"], [], search)
     TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "x"})
     assert chat.seen[1][-1]["content"] == "Телевизор не отозвался."
+
+
+def test_volume_up_presses_tv_keys(tmp_path: Path) -> None:
+    command, log = recorder(tmp_path)
+    chat = OneToolChat("set_volume", {"direction": "up", "steps": 2})
+    video = Video(command, [], volume_command=command)
+    TestClient(create_app(Config(), chat, None, video)).post("/converse", json={"text": "громче"})
+    assert log.read_text() == "KEYCODE_VOLUME_UP KEYCODE_VOLUME_UP\n"

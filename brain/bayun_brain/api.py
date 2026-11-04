@@ -121,7 +121,7 @@ def create_app(
                 args = parse_args(call.arguments)
                 if call.name == "control_device" and home is not None:
                     outcome = await home.control(devices, args)
-                elif call.name in ("play_video", "stop_video") and video is not None:
+                elif call.name in ("play_video", "stop_video", "set_volume") and video is not None:
                     outcome = await video.run(call.name, args)
                 else:
                     outcome = "Нет такого инструмента."

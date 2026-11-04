@@ -42,11 +42,31 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_volume",
+            "description": (
+                "Громкость телевизора (видео и голос Баюна): up — громче, down — тише, "
+                "mute — выключить или вернуть звук. steps — на сколько делений, обычно 3."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "direction": {"type": "string", "enum": ["up", "down", "mute"]},
+                    "steps": {"type": "integer", "minimum": 1, "maximum": 15},
+                },
+                "required": ["direction"],
+            },
+        },
+    },
 ]
+
+VOLUME_KEYS = {"up": "KEYCODE_VOLUME_UP", "down": "KEYCODE_VOLUME_DOWN", "mute": "KEYCODE_MUTE"}
 
 PROMPT = (
     "\nЕсть телевизор: включить на нём видео — play_video с запросом для YouTube, "
-    "выключить — stop_video. Назови, что включил."
+    "выключить — stop_video, громкость — set_volume. Назови, что включил."
 )
 
 
@@ -73,12 +93,16 @@ class Video:
         open_command: list[str],
         home_command: list[str],
         search: Search = youtube_search,
+        volume_command: list[str] | None = None,
     ) -> None:
         self.open_command = open_command
         self.home_command = home_command
+        self.volume_command = volume_command or []
         self.search = search
 
     async def run(self, name: str, args: dict[str, Any]) -> str:
+        if name == "set_volume":
+            return await self._volume(args)
         if name == "stop_video":
             if not self.home_command:
                 return "Не умею выключать видео."
@@ -94,6 +118,14 @@ class Video:
         if found is None:
             return f"По запросу «{query}» ничего не нашлось."
         return await self._exec([*self.open_command, found.url], f"Включено: {found.title}.")
+
+    async def _volume(self, args: dict[str, Any]) -> str:
+        key = VOLUME_KEYS.get(str(args.get("direction")))
+        if not self.volume_command or key is None:
+            return "Громкость менять не умею."
+        steps = 1 if key == VOLUME_KEYS["mute"] else max(1, min(15, int(args.get("steps") or 3)))
+        outcome = await self._exec([*self.volume_command, *[key] * steps], "Громкость изменена.")
+        return outcome.replace("Телевизор не отозвался.", "Громкость не поменялась.")
 
     async def _exec(self, command: list[str], done: str) -> str:
         try:

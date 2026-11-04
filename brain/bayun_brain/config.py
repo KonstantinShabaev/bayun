@@ -45,6 +45,8 @@ class VideoConfig(BaseModel):
     open_command: list[str] = []
     # Вернуть на телевизор экран Баюна.
     home_command: list[str] = []
+    # Пульт ТВ: получает коды клавиш KEYCODE_VOLUME_UP/DOWN, KEYCODE_MUTE.
+    volume_command: list[str] = []
 
 
 class Config(BaseModel):
