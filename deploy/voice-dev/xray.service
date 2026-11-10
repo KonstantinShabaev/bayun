@@ -1,0 +1,18 @@
+[Unit]
+Description=Xray VLESS+Reality client (Bayun split tunnel, socks 127.0.0.1:10808)
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+LoadCredential=config.json:/etc/xray/config.json
+Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray
+ExecStart=/usr/local/bin/xray run -c ${CREDENTIALS_DIRECTORY}/config.json
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

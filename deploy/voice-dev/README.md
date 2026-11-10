@@ -27,3 +27,25 @@ journalctl --user -fu bayun-voice
 Без доступа к Anthropic brain отвечает «Облако сейчас недоступно». Когда появится шлюз,
 в `brain/config.yaml` ставим `main: litellm_proxy/bayun-main` и `api_base` шлюза, ключ
 провайдера из brain.env убираем.
+
+## Автозапуск и сторожа (с 2026-11-11)
+
+Сервисы пользователя `walter` (linger включён, стартуют без входа в KDE):
+`bayun-brain`, `bayun-voice`, `bayun-tv-agent`, `bayun-remote-ui` — все `Restart=always`.
+Киоск Chromium поднимает сам tv-agent, когда он нужен (нужна сессия Wayland).
+
+```sh
+cp bayun-*.service bayun-watchdog.timer ~/.config/systemd/user/
+install -m 755 bayun-watchdog ~/bayun/bin/
+systemctl --user daemon-reload
+systemctl --user enable --now bayun-brain bayun-voice bayun-tv-agent bayun-remote-ui bayun-watchdog.timer
+```
+
+`bayun-watchdog` раз в 2 минуты: сервис, не ответивший дважды подряд, перезапускается.
+
+## VPN: Xray + раздельный туннель
+
+`xray.service` (VLESS+Reality, socks 127.0.0.1:10808, конфиг `/etc/xray/config.json`, 600)
+→ `sing-box` даёт только TUN `sb0` (drop-in `sing-box-xray.conf`) → `vpnsplit` метит 0x51
+трафик к Anthropic и YouTube. Системный `bayun-vpn-watchdog.timer` раз в 3 минуты
+проверяет Anthropic через Xray и перезапускает xray и sing-box после двух неудач подряд.

@@ -1,0 +1,6 @@
+[Unit]
+Description=Баюн: проверка, что brain, voice и tv-agent отвечают
+
+[Service]
+Type=oneshot
+ExecStart=%h/bayun/bin/bayun-watchdog

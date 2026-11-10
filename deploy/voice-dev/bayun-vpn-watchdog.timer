@@ -1,0 +1,10 @@
+# Системный таймер: /etc/systemd/system/bayun-vpn-watchdog.timer
+[Unit]
+Description=Баюн: сторож VPN раз в 3 минуты
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=3min
+
+[Install]
+WantedBy=timers.target

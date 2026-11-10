@@ -1,0 +1,20 @@
+#!/bin/sh
+# Сторож VPN (системный таймер bayun-vpn-watchdog.timer, раз в 3 минуты).
+# Anthropic через socks Xray не открылся два раза подряд → перезапуск xray и sing-box.
+# Нет правила раздельного туннеля → перезапуск vpnsplit.
+flag=/run/bayun-vpn-watchdog.fail
+if ! ip rule | grep -q 'fwmark 0x51'; then
+  logger -t bayun-vpn-watchdog "нет правила 0x51, перезапускаю vpnsplit"
+  systemctl restart vpnsplit
+fi
+if curl -s -m 15 -o /dev/null -x socks5h://127.0.0.1:10808 https://api.anthropic.com/; then
+  rm -f "$flag"
+  exit 0
+fi
+if [ -e "$flag" ]; then
+  logger -t bayun-vpn-watchdog "Anthropic через Xray недоступен, перезапускаю xray и sing-box"
+  systemctl restart xray sing-box
+  rm -f "$flag"
+else
+  touch "$flag"
+fi

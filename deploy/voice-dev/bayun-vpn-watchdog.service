@@ -1,0 +1,7 @@
+# Системный сервис: /etc/systemd/system/bayun-vpn-watchdog.service
+[Unit]
+Description=Баюн: проверка VPN (Xray → Anthropic)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bayun-vpn-watchdog

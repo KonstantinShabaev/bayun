@@ -1,0 +1,10 @@
+# Сервис пользователя: ~/.config/systemd/user/bayun-watchdog.timer
+[Unit]
+Description=Баюн: сторож раз в 2 минуты
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

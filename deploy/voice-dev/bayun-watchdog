@@ -1,0 +1,25 @@
+#!/bin/sh
+# Сторож Баюна (таймер пользователя bayun-watchdog.timer, раз в 2 минуты).
+# Падения ловит systemd (Restart=always), сторож — зависания: сервис жив,
+# но не отвечает два раза подряд → перезапуск. Пока идёт разговор, voice не трогаем.
+state="${XDG_RUNTIME_DIR:-/tmp}/bayun-watchdog"
+mkdir -p "$state"
+
+check() {  # имя юнита, команда проверки
+  unit=$1; shift
+  if "$@" >/dev/null 2>&1; then
+    rm -f "$state/$unit"
+    return
+  fi
+  if [ -e "$state/$unit" ]; then
+    logger -t bayun-watchdog "$unit не отвечает дважды, перезапускаю"
+    systemctl --user restart "$unit"
+    rm -f "$state/$unit"
+  else
+    touch "$state/$unit"
+  fi
+}
+
+check bayun-brain curl -sf -m 5 http://127.0.0.1:8765/health
+check bayun-voice curl -sf -m 5 http://127.0.0.1:8770/api/state
+check bayun-tv-agent curl -sf -m 25 -o /dev/null http://127.0.0.1:8790/status
