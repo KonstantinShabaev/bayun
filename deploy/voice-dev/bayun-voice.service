@@ -4,14 +4,17 @@
 Description=Баюн: голосовой цикл (микрофон → STT → brain → Piper)
 After=pipewire.service pipewire-pulse.service bayun-brain.service
 Wants=bayun-brain.service
+StartLimitIntervalSec=0
 
 [Service]
 WorkingDirectory=%h/bayun
 # ELEVENLABS_API_KEY / YANDEX_API_KEY для облачной озвучки.
 EnvironmentFile=-%h/.config/bayun/voice.env
 ExecStart=%h/.local/bin/uv run --no-sync bayun-voice --config voice/config.yaml
-Restart=on-failure
+Restart=always
 RestartSec=3
+# SIGTERM: голос возвращает громкость видео перед выходом.
+TimeoutStopSec=10
 
 [Install]
 WantedBy=default.target
