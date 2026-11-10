@@ -162,3 +162,27 @@ def test_api_quick_answers_without_llm(tmp_path) -> None:
         assert reply["speech"] == "Таймер на две минуты."
         reply = client.post("/converse", json={"text": "расскажи анекдот"}).json()
         assert reply["speech"] == "я пока учусь и ещё ничего не умею."
+
+
+def test_outage_answers_at_once_after_failure() -> None:
+    from bayun_brain.api import OFFLINE_SPEECH, create_app
+    from fastapi.testclient import TestClient
+
+    class Down:
+        calls = 0
+
+        async def stream(self, messages):  # type: ignore[no-untyped-def]
+            Down.calls += 1
+            raise ConnectionError("VPN лежит")
+            yield ""
+
+        async def complete(self, messages, tools):  # type: ignore[no-untyped-def]
+            raise AssertionError
+
+    client = TestClient(create_app(chat=Down()))  # type: ignore[arg-type]
+    for _ in range(3):
+        assert (
+            client.post("/converse", json={"text": "как дела"}).json()["speech"] == OFFLINE_SPEECH
+        )
+    assert Down.calls == 1
+    assert client.get("/health").json()["llm"] == "down"

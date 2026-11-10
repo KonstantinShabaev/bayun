@@ -45,6 +45,30 @@ _LOGGER = logging.getLogger(__name__)
 OFFLINE_SPEECH = "Нет связи с облаком, думать сейчас не могу. Время, таймеры и свет работают и так."
 
 
+@dataclass
+class Outage:
+    """Облако не ответило: какое-то время не ждём его зря, а сразу говорим об этом.
+
+    Без этого каждая фраза при лежащем VPN висит до таймаута LiteLLM с повторами
+    и запасной моделью — до минуты тишины.
+    """
+
+    cooldown_s: float = 60.0
+    down_until: float = 0.0
+    last_error: str = ""
+
+    def active(self, now: float) -> bool:
+        return now < self.down_until
+
+    def failed(self, now: float, error: BaseException) -> None:
+        self.down_until = now + self.cooldown_s
+        self.last_error = f"{type(error).__name__}: {error}"[:200]
+
+    def ok(self) -> None:
+        self.down_until = 0.0
+        self.last_error = ""
+
+
 class ConverseRequest(BaseModel):
     text: str
     conversation_id: str | None = None
@@ -115,6 +139,7 @@ def create_app(
     hints = HintStore(window_s=config.speaker_hint_window_s)
     conversations = Conversations(config.assistant.history_turns)
     announcements = code.announcements if code is not None else Announcements()
+    outage = Outage()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -180,6 +205,11 @@ def create_app(
         if chat is None:
             name = "" if speaker == "guest" else f"{speaker}, "
             yield f"{name}я пока учусь и ещё ничего не умею."
+            return
+
+        if outage.active(time.monotonic()):
+            _LOGGER.info("Облако недавно не ответило, LLM не зову")
+            yield OFFLINE_SPEECH
             return
 
         system = SYSTEM_PROMPT.format(name=config.assistant.name)
@@ -248,16 +278,23 @@ def create_app(
                     _LOGGER.info("Первая фраза через %.2f с", time.monotonic() - started)
                 said.append(sentence)
                 yield sentence
-        except Exception:
+        except Exception as error:
             _LOGGER.exception("LLM не ответила")
+            outage.failed(time.monotonic(), error)
             if not said:
                 yield OFFLINE_SPEECH
             return
+        outage.ok()
         conversations.remember(conversation_id, request.text, " ".join(said))
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+        state = {"status": "ok", "version": __version__}
+        if chat is not None:
+            state["llm"] = "down" if outage.active(time.monotonic()) else "ok"
+            if outage.last_error:
+                state["llm_error"] = outage.last_error
+        return state
 
     @app.post("/speaker-hint")
     async def speaker_hint(hint: SpeakerHint) -> dict[str, str]:
