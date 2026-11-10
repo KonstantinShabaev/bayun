@@ -138,6 +138,8 @@ class VoiceLoop:
             self.say(announcement.text)
             if announcement.expects_reply:
                 self.conversation(Turn(announcement.conversation_id), listen_first=True)
+            elif announcement.listen:
+                self.conversation(listen_first=True)
         finally:
             self.ducker.restore()
             self.wake.reset()

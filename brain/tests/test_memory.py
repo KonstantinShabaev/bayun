@@ -74,8 +74,8 @@ def test_timer(memory: Memory, clock: Clock) -> None:
 
 def test_reminders(memory: Memory) -> None:
     assert ask(memory, "напомни через 10 минут выключить плиту") == "Напомню через десять минут."
-    assert ask(memory, "Напомни мне в 7:30 позвонить маме.") == "Напомню в 07:30."
-    assert ask(memory, "напомни в 8 вечера что надо вынести мусор") == "Напомню в 20:00."
+    assert ask(memory, "Напомни мне в 7:30 позвонить маме.") == "Напомню в семь тридцать."
+    assert ask(memory, "напомни в 8 вечера что надо вынести мусор") == "Напомню в двадцать часов."
     texts = [r.text for r in memory.pending()]
     assert texts == ["выключить плиту", "позвонить маме", "надо вынести мусор"]
     assert memory.pending()[0].speech() == "Напоминаю: выключить плиту."
@@ -120,7 +120,10 @@ def test_facts(memory: Memory) -> None:
 
 def test_llm_tools(memory: Memory) -> None:
     assert memory.run("set_reminder", {"in_seconds": 120}) == "Таймер на две минуты."
-    assert memory.run("set_reminder", {"text": "купить хлеб", "at": "9:00"}) == "Напомню в 09:00."
+    assert (
+        memory.run("set_reminder", {"text": "купить хлеб", "at": "9:00"})
+        == "Напомню в девять часов."
+    )
     listed = memory.run("list_reminders", {"with_id": True})
     assert listed.startswith("[1] таймер, через две минуты; [2] купить хлеб, через")
     assert memory.run("cancel_reminder", {"id": 2}) == "Отменил."
@@ -131,7 +134,7 @@ def test_llm_tools(memory: Memory) -> None:
 async def test_run_reminders_announces(memory: Memory, clock: Clock) -> None:
     said: list[str] = []
     memory.add_reminder("reminder", "полить цветы", NOW + 1)
-    task = asyncio.create_task(memory.run_reminders(said.append, tick_s=0.01))
+    task = asyncio.create_task(memory.run_reminders(lambda t, _: said.append(t), tick_s=0.01))
     await asyncio.sleep(0.03)
     assert said == []
     clock.now += 2
@@ -198,7 +201,7 @@ def test_outage_answers_at_once_after_failure() -> None:
 
 
 def test_review_regressions(memory: Memory) -> None:
-    assert ask(memory, "напомни в 2 часа дня покормить кота") == "Напомню в 14:00."
+    assert ask(memory, "напомни в 2 часа дня покормить кота") == "Напомню в четырнадцать часов."
     assert ask(memory, "напомни через час часы перевести") == "Напомню через час."
     assert sorted(r.text for r in memory.pending()) == ["покормить кота", "часы перевести"]
     assert ask(memory, "запомни меня") is None
@@ -228,3 +231,53 @@ def test_light_where_cases() -> None:
     lights = [("light.kitchen", "Кухня"), ("light.sofa", "Свет за диваном")]
     cmd = light_match("включи свет на кухне")
     assert cmd is not None and [c["entity_id"] for c in cmd.calls(lights)] == ["light.kitchen"]
+
+
+def test_alarm(memory: Memory, clock: Clock) -> None:
+    from bayun_brain.memory.speech import time_words
+
+    assert time_words(7, 5) == "семь ноль пять"
+    assert time_words(1, 0) == "один час"
+    assert ask(memory, "Волтэр, разбуди меня в 7 утра") == "Разбужу в семь часов."
+    assert ask(memory, "поставь будильник на 6 45") == "Разбужу в шесть сорок пять."
+    assert ask(memory, "стоп") is None  # ещё не звенит — пусть идёт дальше (видео)
+    clock.now = datetime(2026, 11, 11, 6, 45).timestamp()
+    rang = memory.due()
+    assert [r.speech(clock.now) for r in rang] == [
+        "Подъём! Сейчас шесть часов сорок пять минут, пора вставать."
+    ]
+    assert memory.ringing() == 1
+    clock.now += 61
+    assert len(memory.due()) == 1  # перезванивает
+    assert ask(memory, "я встал") == "Хорошего дня!"
+    assert memory.ringing() == 0
+    assert [r.kind for r in memory.pending()] == ["alarm"]  # на 7:00 остался
+    assert ask(memory, "отмени будильник") == "Будильник отменил."
+
+
+def test_alarm_gives_up(memory: Memory, clock: Clock) -> None:
+    memory.set_reminder("", in_seconds=1, kind="alarm")
+    rings = 0
+    for _ in range(10):
+        clock.now += 61
+        rings += len(memory.due())
+    assert rings == 5
+    assert memory.pending() == []
+
+
+def test_migrates_first_reminders_table(tmp_path) -> None:
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    old = sqlite3.connect(db)
+    old.executescript(
+        "CREATE TABLE reminders (id INTEGER PRIMARY KEY, "
+        "kind TEXT NOT NULL CHECK (kind IN ('timer', 'reminder')), text TEXT NOT NULL, "
+        "due_at REAL NOT NULL, created_at REAL NOT NULL, done INTEGER NOT NULL DEFAULT 0);"
+        "INSERT INTO reminders VALUES (1, 'reminder', 'полить цветы', 10, 1, 0);"
+    )
+    old.commit()
+    old.close()
+    memory = Memory(db, clock=Clock())
+    assert [r.text for r in memory.pending()] == ["полить цветы"]
+    memory.set_reminder("", in_seconds=60, kind="alarm")

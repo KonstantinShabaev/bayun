@@ -40,9 +40,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE TABLE IF NOT EXISTS reminders (
   id INTEGER PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('timer', 'reminder')),
+  kind TEXT NOT NULL CHECK (kind IN ('timer', 'reminder', 'alarm')),
   text TEXT NOT NULL,             -- «выключить плиту»; у таймера — пусто или подпись
-  due_at REAL NOT NULL,           -- unix time
+  due_at REAL NOT NULL,           -- unix time; у звенящего будильника — следующий звонок
   created_at REAL NOT NULL,
-  done INTEGER NOT NULL DEFAULT 0
+  done INTEGER NOT NULL DEFAULT 0,
+  rings INTEGER NOT NULL DEFAULT 0  -- сколько раз будильник уже прозвенел
 );

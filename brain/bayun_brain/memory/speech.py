@@ -72,6 +72,15 @@ def duration_words(seconds: int) -> str:
     return " ".join(parts)
 
 
+def time_words(hours: int, minutes: int) -> str:
+    """Время коротко, как говорят: «семь тридцать», «семь ноль пять», «семь часов»."""
+    hour = "один" if hours == 1 else number_words(hours) if hours else "ноль"
+    if minutes == 0:
+        return f"{hour} {plural(hours, 'час', 'часа', 'часов')}"
+    tail = number_words(minutes) if minutes >= 10 else f"ноль {number_words(minutes)}"
+    return f"{hour} {tail}"
+
+
 def clock_words(hours: int, minutes: int) -> str:
     """Время для озвучки: «семь часов пять минут»."""
     count = number_words(hours) if hours != 1 else "один"

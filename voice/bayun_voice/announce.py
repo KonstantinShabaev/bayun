@@ -22,6 +22,8 @@ class Announcement:
     text: str
     expects_reply: bool = False
     conversation_id: str | None = None
+    # Послушать новую команду без имени (будильник ждёт «стоп»).
+    listen: bool = False
 
 
 class Announcer:
@@ -67,6 +69,7 @@ class Announcer:
                     str(event["text"]),
                     bool(event.get("expects_reply")),
                     event.get("conversation_id"),
+                    bool(event.get("listen")),
                 )
             )
 

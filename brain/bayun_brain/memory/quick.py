@@ -34,6 +34,17 @@ _LIST = {"сколько осталось", "сколько осталось н�
 _CANCEL = re.compile(
     r"^(?:отмени|сбрось|выключи|убери|удали|останови)\s+(?:все\s+)?(?:таймер\w*|напоминани\w*)$"
 )
+_ALARM_AT = re.compile(
+    r"^(?:разбуди(?:\s+меня)?(?:\s+завтра)?|(?:поставь\s+|заведи\s+)?будильник)"
+    r"\s+(?:на|в)\s+(?P<h>\d{1,2})(?:\s+(?P<m>\d{2}))?"
+    r"(?:\s+(?:час\w*|утра|дня|вечера|ночи|минут\w*)){0,3}$"
+)
+_ALARM_IN = re.compile(r"^разбуди(?:\s+меня)?\s+через\s+(?P<span>.+)$")
+# Пока будильник звенит, «стоп» — ему, а не видео.
+_ALARM_STOP = {"стоп", "хватит", "встаю", "я встал", "я встала", "проснулся", "проснулась",
+               "выключи будильник", "отмени будильник", "стоп будильник", "все встаю",
+               "замолчи", "отстань", "ладно", "хорошо", "спасибо"}  # fmt: skip
+_ALARM_CANCEL = re.compile(r"^(?:отмени|выключи|убери|удали)\s+(?:все\s+)?будильник\w*$")
 _FACTS = {"что ты помнишь", "что ты запомнил", "что ты знаешь", "что ты обо мне знаешь",
           "что ты знаешь обо мне", "что ты знаешь о доме"}  # fmt: skip
 
@@ -95,6 +106,18 @@ def answer(text: str, memory: Memory, now: float) -> str | None:
         return f"Сейчас {clock_words(local.hour, local.minute)}."
     if phrase in _DATE:
         return f"Сегодня {_WEEKDAYS[local.weekday()]}, {local.day} {_MONTHS[local.month - 1]}."
+    if phrase in _ALARM_STOP and memory.ringing():
+        memory.stop_alarms(ringing_only=True)
+        return "Хорошего дня!"
+    if _ALARM_CANCEL.match(phrase):
+        return "Будильник отменил." if memory.stop_alarms() else "Будильников нет."
+    if m := _ALARM_AT.match(phrase):
+        hours = _hour(int(m.group("h")), phrase)
+        minutes = int(m.group("m") or 0)
+        if hours < 24 and minutes < 60:
+            return memory.set_reminder("", at=f"{hours}:{minutes:02d}", kind="alarm")
+    if (m := _ALARM_IN.match(phrase)) and (seconds := parse_span(m.group("span"))):
+        return memory.set_reminder("", in_seconds=seconds, kind="alarm")
     if phrase in _HELP:
         return HELP_SPEECH
     if phrase in _LIST:

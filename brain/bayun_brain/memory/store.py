@@ -16,20 +16,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .speech import duration_words, plural
+from .speech import clock_words, duration_words, plural, time_words
 
 _LOGGER = logging.getLogger(__name__)
 
 SCHEMA = Path(__file__).with_name("schema.sql")
 # Сколько фактов показывать модели. Дальше — самые свежие.
 PROMPT_FACTS = 60
+# Будильник звенит, пока не скажут «стоп», но не больше стольких раз, с таким шагом.
+ALARM_RINGS = 5
+ALARM_EVERY_S = 60
 
 PROMPT = """
 У тебя есть долгая память. Когда просят запомнить что-то о доме или людях, \
 вызови remember_fact и сформулируй факт коротко от третьего лица. Когда просят \
 забыть — forget_fact с номером факта. Таймер или напоминание — set_reminder: \
-через сколько секунд или к какому времени. Что поставлено — list_reminders, \
-отменить — cancel_reminder."""
+через сколько секунд или к какому времени, будильник — kind alarm. \
+Что поставлено — list_reminders, отменить — cancel_reminder."""
 
 
 def _tool(
@@ -69,6 +72,7 @@ TOOLS: list[dict[str, Any]] = [
             "text": {"type": "string"},
             "in_seconds": {"type": "integer", "minimum": 1},
             "at": {"type": "string", "description": "ЧЧ:ММ"},
+            "kind": {"type": "string", "enum": ["timer", "reminder", "alarm"]},
         },
         [],
     ),
@@ -97,24 +101,47 @@ class Reminder:
     text: str
     due_at: float
 
-    def speech(self) -> str:
+    def speech(self, now: float | None = None) -> str:
         """Что сказать, когда срок пришёл."""
+        if self.kind == "alarm":
+            local = datetime.fromtimestamp(now if now is not None else self.due_at)
+            wake = self.text or "пора вставать"
+            return f"Подъём! Сейчас {clock_words(local.hour, local.minute)}, {wake}."
         if self.kind == "timer":
             return f"Таймер {self.text} готов." if self.text else "Время вышло, таймер сработал."
         return f"Напоминаю: {self.text}."
 
     def describe(self, now: float, with_id: bool = False) -> str:
         left = duration_words(max(1, round(self.due_at - now)))
-        what = f"таймер {self.text}".strip() if self.kind == "timer" else self.text
+        what = {"timer": f"таймер {self.text}".strip(), "alarm": "будильник"}.get(
+            self.kind, self.text
+        )
         return f"[{self.id}] {what}, через {left}" if with_id else f"{what}, через {left}"
 
 
 class Memory:
     def __init__(self, path: Path | str, clock: Callable[[], float] = time.time) -> None:
         self._db = sqlite3.connect(str(path), check_same_thread=False)
+        self._migrate()
         self._db.executescript(SCHEMA.read_text(encoding="utf-8"))
         self._clock = clock
         self._wake = asyncio.Event()
+
+    def _migrate(self) -> None:
+        """Первая версия таблицы reminders (11.11.2026) — без будильников и rings."""
+        row = self._db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reminders'"
+        ).fetchone()
+        if row is None or "rings" in row[0]:
+            return
+        _LOGGER.info("Обновляю таблицу напоминаний")
+        self._db.executescript(
+            "ALTER TABLE reminders RENAME TO reminders_v1;"
+            + SCHEMA.read_text(encoding="utf-8")
+            + "INSERT INTO reminders (id, kind, text, due_at, created_at, done) "
+            "SELECT id, kind, text, due_at, created_at, done FROM reminders_v1;"
+            "DROP TABLE reminders_v1;"
+        )
 
     # ---------- факты ----------
 
@@ -185,16 +212,41 @@ class Memory:
         return cursor.rowcount
 
     def due(self) -> list[Reminder]:
-        """Сработавшие сейчас; помечаются выполненными."""
+        """Сработавшие сейчас; помечаются выполненными, будильник — перезванивает."""
         now = self._clock()
         due = [r for r in self.pending() if r.due_at <= now]
         for reminder in due:
-            self._db.execute("UPDATE reminders SET done = 1 WHERE id = ?", (reminder.id,))
+            if reminder.kind == "alarm":
+                self._db.execute(
+                    "UPDATE reminders SET rings = rings + 1, due_at = ?, "
+                    "done = (rings + 1 >= ?) WHERE id = ?",
+                    (now + ALARM_EVERY_S, ALARM_RINGS, reminder.id),
+                )
+            else:
+                self._db.execute("UPDATE reminders SET done = 1 WHERE id = ?", (reminder.id,))
         if due:
             self._db.commit()
         return due
 
-    async def run_reminders(self, announce: Callable[[str], None], tick_s: float = 1.0) -> None:
+    def ringing(self) -> int:
+        """Будильники, которые уже звенят и ждут «стоп»."""
+        row = self._db.execute(
+            "SELECT count(*) FROM reminders WHERE done = 0 AND kind = 'alarm' AND rings > 0"
+        ).fetchone()
+        return int(row[0])
+
+    def stop_alarms(self, ringing_only: bool = False) -> int:
+        """Выключает звенящие будильники или (ringing_only=False) все поставленные."""
+        cursor = self._db.execute(
+            "UPDATE reminders SET done = 1 WHERE done = 0 AND kind = 'alarm'"
+            + (" AND rings > 0" if ringing_only else "")
+        )
+        self._db.commit()
+        return cursor.rowcount
+
+    async def run_reminders(
+        self, announce: Callable[[str, bool], None], tick_s: float = 1.0
+    ) -> None:
         """Фоновая задача brain: произносит напоминания, когда приходит срок.
 
         Пропущенные за время простоя (brain лежал) говорятся сразу после старта.
@@ -203,7 +255,8 @@ class Memory:
             try:
                 for reminder in self.due():
                     _LOGGER.info("Сработало напоминание %s: %s", reminder.id, reminder.text)
-                    announce(reminder.speech())
+                    # Будильник ждёт «стоп» без имени.
+                    announce(reminder.speech(self._clock()), reminder.kind == "alarm")
             except Exception:
                 # Одна ошибка не должна навсегда выключить напоминания.
                 _LOGGER.exception("Напоминания: ошибка")
@@ -225,8 +278,9 @@ class Memory:
         if name == "forget_fact":
             return "Забыл." if self.forget(int(args.get("id") or 0)) else "Такого не помню."
         if name == "set_reminder":
+            kind = args.get("kind") if args.get("kind") == "alarm" else None
             return self.set_reminder(
-                str(args.get("text") or ""), args.get("in_seconds"), args.get("at")
+                str(args.get("text") or ""), args.get("in_seconds"), args.get("at"), kind
             )
         if name == "list_reminders":
             pending = self.pending()
@@ -246,7 +300,9 @@ class Memory:
             return f"Отменил {count} {plural(count, 'штуку', 'штуки', 'штук')}."
         return "Нет такого инструмента."
 
-    def set_reminder(self, text: str, in_seconds: Any = None, at: Any = None) -> str:
+    def set_reminder(
+        self, text: str, in_seconds: Any = None, at: Any = None, kind: str | None = None
+    ) -> str:
         now = self._clock()
         if in_seconds:
             seconds = int(in_seconds)
@@ -258,12 +314,15 @@ class Memory:
             due, seconds = at_time, round(at_time - now)
         else:
             return "Не понял, когда напомнить."
-        kind = "reminder" if text.strip() else "timer"
+        kind = kind or ("reminder" if text.strip() else "timer")
         self.add_reminder(kind, text, due)
+        verb = "Разбужу" if kind == "alarm" else "Напомню"
         if at and not in_seconds:
             when = datetime.fromtimestamp(due)
-            return f"Напомню в {when:%H:%M}."
+            return f"{verb} в {time_words(when.hour, when.minute)}."
         span = duration_words(seconds)
+        if kind == "alarm":
+            return f"Разбужу через {span}."
         return f"Напомню через {span}." if kind == "reminder" else f"Таймер на {span}."
 
 

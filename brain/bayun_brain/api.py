@@ -159,7 +159,9 @@ def create_app(
         task = None
         if memory is not None:
             task = asyncio.create_task(
-                memory.run_reminders(lambda text: announcements.publish(Announcement(text)))
+                memory.run_reminders(
+                    lambda text, listen: announcements.publish(Announcement(text, listen=listen))
+                )
             )
         yield
         if task is not None:

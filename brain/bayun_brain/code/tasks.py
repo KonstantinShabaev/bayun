@@ -32,6 +32,8 @@ class Announcement:
     project: str = ""
     # Полный текст для экрана (итог Claude Code, команда целиком).
     details: str = ""
+    # Голос после фразы слушает без имени новую команду («стоп» будильнику).
+    listen: bool = False
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
 
     @property
@@ -47,6 +49,7 @@ class Announcement:
             "conversation_id": self.conversation_id,
             "project": self.project,
             "details": self.details,
+            "listen": self.listen,
         }
 
 
