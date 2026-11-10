@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import re
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -49,16 +50,23 @@ class Announcement:
         }
 
 
+MISSED_TTL_S = 600
+
+
 class Announcements:
     """Очередь для подписчиков SSE. Вопросы, ждущие ответа, отдаются и новым подписчикам."""
 
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._open: dict[str, Announcement] = {}
+        # Сказанное, пока голос не подключён (brain только встал): отдаём при подключении.
+        self._missed: list[tuple[float, dict[str, Any]]] = []
 
     def publish(self, announcement: Announcement) -> None:
         if announcement.expects_reply:
             self._open[announcement.id] = announcement
+        elif not self._subscribers:
+            self._missed.append((time.monotonic(), announcement.event()))
         _LOGGER.info("Объявление: %s", announcement.text)
         self._send(announcement.event())
 
@@ -72,6 +80,11 @@ class Announcements:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         for announcement in self._open.values():
             queue.put_nowait(announcement.event())
+        fresh = time.monotonic() - MISSED_TTL_S
+        for ts, event in self._missed:
+            if ts >= fresh:
+                queue.put_nowait(event)
+        self._missed = []
         self._subscribers.add(queue)
         return queue
 

@@ -8,6 +8,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -68,6 +69,16 @@ class Outage:
     def ok(self) -> None:
         self.down_until = 0.0
         self.last_error = ""
+
+
+_OUTAGE_NAMES = ("Connection", "Timeout", "ServiceUnavailable", "Network")
+
+
+def is_outage(error: BaseException) -> bool:
+    """Облако недоступно (сеть, таймаут, 503), а не ошибка в запросе или в коде."""
+    if isinstance(error, (ConnectionError, TimeoutError)):
+        return True
+    return any(name in type(error).__name__ for name in _OUTAGE_NAMES)
 
 
 class ConverseRequest(BaseModel):
@@ -169,7 +180,11 @@ def create_app(
         calls = command.calls(lights)
         if not calls:
             return None
-        outcomes = [await home.control(devices, call) for call in calls]
+        try:
+            outcomes = [await home.control(devices, call) for call in calls]
+        except Exception:
+            _LOGGER.exception("Home Assistant не ответил")
+            return "Умный дом сейчас не отвечает."
         if any(o.startswith("Не получилось") for o in outcomes):
             return "Не получилось, умный дом ответил ошибкой."
         if command.brightness_pct is not None:
@@ -254,25 +269,35 @@ def create_app(
 
             async def run_tool(call: ToolCall) -> str:
                 args = parse_args(call.arguments)
-                if call.name == "control_device" and home is not None:
+                try:
+                    outcome = await call_tool(call.name, args)
+                except Exception as error:
+                    # Ошибка инструмента — не ошибка облака: модель скажет, что не вышло.
+                    _LOGGER.exception("Инструмент %s упал", call.name)
+                    outcome = f"Не получилось: {type(error).__name__}."
+                _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
+                return outcome
+
+            async def call_tool(name: str, args: dict[str, Any]) -> str:
+                if name == "control_device" and home is not None:
                     outcome = await home.control(devices, args)
-                elif call.name in VIDEO_NAMES and video is not None:
-                    outcome = Final(await video.run(call.name, args))
-                elif call.name == "web_search" and search is not None:
+                    # Удалось — сразу «Готово», без второго круга модели (минус секунда).
+                    if outcome.startswith("Готово"):
+                        outcome = Final("Готово.")
+                elif name in VIDEO_NAMES and video is not None:
+                    outcome = Final(await video.run(name, args))
+                elif name == "web_search" and search is not None:
                     question = str(args.get("question") or request.text)
                     outcome = Final(await search(question))
-                elif call.name in MEMORY_TOOL_NAMES and memory is not None:
-                    if call.name == "list_reminders":
-                        outcome = memory.run(call.name, {"with_id": True})
+                elif name in MEMORY_TOOL_NAMES and memory is not None:
+                    if name == "list_reminders":
+                        outcome = memory.run(name, {"with_id": True})
                     else:
-                        outcome = Final(memory.run(call.name, args))
-                elif call.name in CODE_TOOL_NAMES and code is not None:
-                    outcome = Final(
-                        await code.run(call.name, args, request.device_id, conversation_id)
-                    )
+                        outcome = Final(memory.run(name, args))
+                elif name in CODE_TOOL_NAMES and code is not None:
+                    outcome = Final(await code.run(name, args, request.device_id, conversation_id))
                 else:
                     outcome = "Нет такого инструмента."
-                _LOGGER.info("Инструмент %s %s: %s", call.name, args, outcome)
                 return outcome
 
             source = (
@@ -287,7 +312,8 @@ def create_app(
                 yield sentence
         except Exception as error:
             _LOGGER.exception("LLM не ответила")
-            outage.failed(time.monotonic(), error)
+            if is_outage(error):
+                outage.failed(time.monotonic(), error)
             if not said:
                 yield OFFLINE_SPEECH
             return

@@ -195,3 +195,36 @@ def test_outage_answers_at_once_after_failure() -> None:
         )
     assert Down.calls == 1
     assert client.get("/health").json()["llm"] == "down"
+
+
+def test_review_regressions(memory: Memory) -> None:
+    assert ask(memory, "напомни в 2 часа дня покормить кота") == "Напомню в 14:00."
+    assert ask(memory, "напомни через час часы перевести") == "Напомню через час."
+    assert sorted(r.text for r in memory.pending()) == ["покормить кота", "часы перевести"]
+    assert ask(memory, "запомни меня") is None
+    assert ask(memory, "полтергейст что ты умеешь") is None
+
+
+def test_announcements_kept_until_voice_connects() -> None:
+    from bayun_brain.code import Announcement, Announcements
+
+    hub = Announcements()
+    hub.publish(Announcement("Напоминаю: полить цветы."))
+    queue = hub.listen()
+    assert queue.get_nowait()["text"] == "Напоминаю: полить цветы."
+    assert hub.listen().empty()
+
+
+def test_tool_error_is_not_outage() -> None:
+    from bayun_brain.api import is_outage
+
+    assert is_outage(ConnectionError())
+    assert is_outage(type("APIConnectionError", (Exception,), {})())
+    assert not is_outage(ValueError("bad args"))
+    assert not is_outage(type("BadRequestError", (Exception,), {})())
+
+
+def test_light_where_cases() -> None:
+    lights = [("light.kitchen", "Кухня"), ("light.sofa", "Свет за диваном")]
+    cmd = light_match("включи свет на кухне")
+    assert cmd is not None and [c["entity_id"] for c in cmd.calls(lights)] == ["light.kitchen"]

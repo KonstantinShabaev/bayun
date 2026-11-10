@@ -35,7 +35,8 @@ class LightCommand:
 
 
 def _stem(word: str) -> str:
-    return word[:5] if len(word) > 5 else word
+    # Четыре буквы: «кухне» и «Кухня», «диваном» и «диван» совпадают.
+    return word[:4]
 
 
 def _filter(lights: list[tuple[str, str]], where: str) -> list[tuple[str, str]]:

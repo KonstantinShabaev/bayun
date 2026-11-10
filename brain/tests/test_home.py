@@ -49,9 +49,11 @@ def test_light_command_calls_home_assistant() -> None:
     calls: list[tuple[str, dict[str, Any]]] = []
     chat = ToolChat({"entity_id": "light.kitchen", "action": "turn_on", "brightness_pct": 40})
     client = TestClient(create_app(Config(), chat, fake_ha(calls)))
-    speech = client.post("/converse", json={"text": "включи свет на кухне"}).json()["speech"]
+    speech = client.post("/converse", json={"text": "на кухне хочу посветлее"}).json()["speech"]
 
-    assert speech == "Включил свет на кухне."
+    # Удачная команда — «Готово» сразу, без второго круга модели.
+    assert speech == "Готово."
+    assert len(chat.seen) == 1
     assert calls == [
         ("/api/services/light/turn_on", {"entity_id": "light.kitchen", "brightness_pct": 40})
     ]

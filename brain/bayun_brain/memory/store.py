@@ -200,9 +200,13 @@ class Memory:
         Пропущенные за время простоя (brain лежал) говорятся сразу после старта.
         """
         while True:
-            for reminder in self.due():
-                _LOGGER.info("Сработало напоминание %s: %s", reminder.id, reminder.text)
-                announce(reminder.speech())
+            try:
+                for reminder in self.due():
+                    _LOGGER.info("Сработало напоминание %s: %s", reminder.id, reminder.text)
+                    announce(reminder.speech())
+            except Exception:
+                # Одна ошибка не должна навсегда выключить напоминания.
+                _LOGGER.exception("Напоминания: ошибка")
             self._wake.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), tick_s)

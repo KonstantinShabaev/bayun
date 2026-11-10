@@ -252,7 +252,8 @@ async def agent_sentences(
             if isinstance(output, Final):
                 finals.append(output)
         if finals:
-            text = " ".join(finals)
+            # Несколько ламп — одно «Готово», а не три.
+            text = " ".join(dict.fromkeys(finals))
             break
     splitter = SentenceSplitter()
     for sentence in [*splitter.feed(text), *splitter.flush()]:
