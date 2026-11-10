@@ -11,6 +11,7 @@ EnvironmentFile=-%h/.config/bayun/brain.env
 ExecStart=%h/.local/bin/uv run --no-sync bayun-brain --config brain/config.yaml --host 127.0.0.1
 Restart=always
 RestartSec=3
+TimeoutStopSec=10
 
 [Install]
 WantedBy=default.target

@@ -37,7 +37,8 @@ def run() -> None:
         code = CodeTasks(config.code, SdkSession(config.code), summarizer(chat))
     memory = Memory(config.database.expanduser())
     app = create_app(config, chat, home, video, code, memory)
-    uvicorn.run(app, host=args.host, port=args.port)
+    # SSE /announcements не закрывается сам: не ждать его при остановке.
+    uvicorn.run(app, host=args.host, port=args.port, timeout_graceful_shutdown=3)
 
 
 if __name__ == "__main__":
