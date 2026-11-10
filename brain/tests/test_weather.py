@@ -25,6 +25,8 @@ def test_kind() -> None:
     assert kind("нужен ли зонт") == "umbrella"
     assert kind("брать ли зонт завтра") == "umbrella_tomorrow"
     assert kind("какая погода в Сочи") is None
+    assert kind("Волтэр, доброе утро!") == "morning"
+    assert speech("morning", DATA).startswith("Доброе утро! Сейчас плюс два градуса")
 
 
 def test_speech() -> None:

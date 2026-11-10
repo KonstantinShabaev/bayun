@@ -50,9 +50,14 @@ def _sky(code: Any) -> str:
     return _CODES.get(int(code or 0), "")
 
 
+_MORNING = {"доброе утро", "утро доброе", "привет доброе утро", "с добрым утром"}
+
+
 def kind(text: str) -> str | None:
-    """now / tomorrow / umbrella / umbrella_tomorrow или None."""
+    """now / tomorrow / umbrella / umbrella_tomorrow / morning или None."""
     phrase = normalize(text)
+    if phrase in _MORNING:
+        return "morning"
     if phrase in _NOW:
         return "now"
     if phrase in _TOMORROW:
@@ -77,6 +82,8 @@ def speech(what: str, data: dict[str, Any]) -> str:
         if rain >= 25:
             return f"На всякий случай возьми, {when} осадки возможны."
         return f"Не нужен, {when} осадков почти не будет."
+    if what == "morning":
+        return "Доброе утро! " + speech("now", data)
     if day:
         # Без «от … до …»: им нужен родительный падеж числительных.
         text = f"Завтра днём {degrees(high)}, ночью {degrees(low)}"
