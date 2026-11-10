@@ -113,6 +113,33 @@ class LiteLlmChat:
         answer = str(response.choices[0].message.content or "").strip()
         return answer or "Не нашёл ответа, спроси иначе."
 
+    async def stream_complete(
+        self, messages: list[Message], tools: list[dict[str, Any]]
+    ) -> AsyncIterator["str | Completion"]:
+        """Ответ с инструментами потоком: куски текста, в конце Completion с вызовами."""
+        import litellm
+
+        response = await litellm.acompletion(**self._kwargs(messages), tools=tools, stream=True)
+        text: list[str] = []
+        calls: dict[int, dict[str, str]] = {}
+        async for chunk in response:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                text.append(delta.content)
+                yield delta.content
+            for part in getattr(delta, "tool_calls", None) or []:
+                call = calls.setdefault(part.index or 0, {"id": "", "name": "", "args": ""})
+                call["id"] = part.id or call["id"]
+                if part.function is not None:
+                    call["name"] += part.function.name or ""
+                    call["args"] += part.function.arguments or ""
+        yield Completion(
+            "".join(text),
+            [ToolCall(c["id"], c["name"], c["args"]) for _, c in sorted(calls.items())],
+        )
+
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         import litellm
 
@@ -226,9 +253,22 @@ async def agent_sentences(
     """Модель с инструментами: вызывает их, пока нужно, и отдаёт итоговый текст."""
     messages = list(messages)
     text = ""
+    splitter = SentenceSplitter()
+    streaming = getattr(model, "stream_complete", None)
     for _ in range(MAX_TOOL_ROUNDS):
-        result = await model.complete(messages, tools)
-        text = result.text
+        if streaming is None:
+            result = await model.complete(messages, tools)
+        else:
+            # Текст говорится по мере генерации: первая фраза не ждёт конца ответа.
+            result = Completion("")
+            async for item in streaming(messages, tools):
+                if isinstance(item, Completion):
+                    result = item
+                    continue
+                for sentence in splitter.feed(item):
+                    if cleaned := clean_for_speech(sentence):
+                        yield cleaned
+        text = "" if streaming is not None else result.text
         if not result.tool_calls:
             break
         messages.append(
@@ -255,7 +295,6 @@ async def agent_sentences(
             # Несколько ламп — одно «Готово», а не три.
             text = " ".join(dict.fromkeys(finals))
             break
-    splitter = SentenceSplitter()
     for sentence in [*splitter.feed(text), *splitter.flush()]:
         if cleaned := clean_for_speech(sentence):
             yield cleaned

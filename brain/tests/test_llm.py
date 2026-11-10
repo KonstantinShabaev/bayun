@@ -68,3 +68,34 @@ def test_audio_tags_prompt_only_when_asked() -> None:
     client.post("/converse", json={"text": "шутка", "audio_tags": True})
     assert "[laughs]" not in chat.seen[0][0]["content"]
     assert "[laughs]" in chat.seen[1][0]["content"]
+
+
+async def test_agent_streams_text_and_runs_tools() -> None:
+    from bayun_brain.llm import Completion, Final, ToolCall, agent_sentences
+
+    class Streamy:
+        rounds = 0
+
+        async def stream_complete(self, messages, tools):  # type: ignore[no-untyped-def]
+            Streamy.rounds += 1
+            if Streamy.rounds == 1:
+                yield Completion("", [ToolCall("t1", "lamp", "{}")])
+                return
+            for part in ["Небо синее из-за ", "рассеяния света. ", "Вот и всё."]:
+                yield part
+            yield Completion("Небо синее из-за рассеяния света. Вот и всё.")
+
+    async def run_tool(call: ToolCall) -> str:
+        return "ok"
+
+    said = [s async for s in agent_sentences(Streamy(), [], [], run_tool)]  # type: ignore[arg-type]
+    assert said == ["Небо синее из-за рассеяния света.", "Вот и всё."]
+
+    class Lamp(Streamy):
+        async def stream_complete(self, messages, tools):  # type: ignore[no-untyped-def]
+            yield Completion("", [ToolCall("a", "x", "{}"), ToolCall("b", "x", "{}")])
+
+    async def final(call: ToolCall) -> str:
+        return Final("Готово.")
+
+    assert [s async for s in agent_sentences(Lamp(), [], [], final)] == ["Готово."]  # type: ignore[arg-type]
