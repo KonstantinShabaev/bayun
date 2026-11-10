@@ -1,0 +1,15 @@
+# Сервис пользователя: ~/.config/systemd/user/bayun-remote-ui.service
+# Веб-пульт ТВ для телефона (только LAN), ходит в tv-agent.
+[Unit]
+Description=Баюн: веб-пульт телевизора
+After=bayun-tv-agent.service
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/bayun/tv
+ExecStart=/usr/bin/python3 -m bayun_tv.remote_ui
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
