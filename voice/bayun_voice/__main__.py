@@ -24,7 +24,7 @@ from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
 from .status import Status, serve
 from .tts import load_tts, strip_audio_tags
-from .wake import OpenWakeWord
+from .wake import OpenWakeWord, SttWake
 
 _LOGGER = logging.getLogger("bayun_voice")
 
@@ -40,9 +40,14 @@ class VoiceLoop:
         self.config = config
         self.status = status
         status.set(phase="loading")
-        self.wake = OpenWakeWord(config.wake.model)
         self.vad: SpeechDetector = load_vad()
         self.asr = load_engine(config.stt.engine)
+        wake = config.wake
+        self.wake: OpenWakeWord | SttWake = (
+            SttWake(self.asr, load_vad(), wake.pattern, wake.vad_threshold)
+            if wake.engine == "stt"
+            else OpenWakeWord(wake.model)
+        )
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.mic = Mic(config.audio.input_device)
@@ -113,14 +118,20 @@ class VoiceLoop:
         turn = Turn()
         timeout = self.config.listen.start_timeout_s
         while True:
-            if self.config.listen.beep and timeout == self.config.listen.start_timeout_s:
-                self.say_raw(beep(self.tts.rate, volume=0.1))
-            pcm = self.record(timeout)
-            if pcm is None:
-                break
-            text = self.transcribe(pcm)
-            if not text:
-                break
+            # «Волтэр, включи свет» одной фразой: команда уже распознана вместе с именем.
+            text = self._said_with_name()
+            if text:
+                _LOGGER.info("Вместе с именем: %r", text)
+                self.status.log("user", text)
+            else:
+                if self.config.listen.beep and timeout == self.config.listen.start_timeout_s:
+                    self.say_raw(beep(self.tts.rate, volume=0.1))
+                pcm = self.record(timeout)
+                if pcm is None:
+                    break
+                text = self.transcribe(pcm)
+                if not text:
+                    break
             if self.reply(text, turn):
                 # Перебили по имени: сразу слушаем новую фразу.
                 timeout = self.config.listen.start_timeout_s
@@ -224,6 +235,12 @@ class VoiceLoop:
                 player.add(self.tts.synthesize(item))
         return False
 
+    def _said_with_name(self) -> str:
+        if not isinstance(self.wake, SttWake):
+            return ""
+        text, self.wake.remainder = self.wake.remainder, ""
+        return text
+
     def heard_name(self) -> bool:
         """Перебили ли: имя по детектору или «стоп/хватит» по короткому STT.
 
@@ -235,6 +252,15 @@ class VoiceLoop:
                 frame = self.mic.frames.get_nowait()
             except queue.Empty:
                 return False
+            if isinstance(self.wake, SttWake):
+                # Детектор и так распознаёт каждый кусок: стоп-слово ищем в нём же.
+                self.wake.last_text = ""
+                if self.wake(frame) >= 1.0:
+                    return True
+                if STOP_WORDS.search(self.wake.last_text.lower()):
+                    _LOGGER.info("Стоп-слово: %r", self.wake.last_text)
+                    return True
+                continue
             if self.wake(frame) >= self.config.wake.threshold:
                 self.wake.reset()
                 return True

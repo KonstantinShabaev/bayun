@@ -9,6 +9,11 @@ audio:
   wake_screen_command: []   # будит ТВ и ставит вход, например ["/home/walter/bayun/bin/tv-open", "--input-only"]
 
 wake:
+  # stt — имя по распознаванию речи: «Волтэр» во всех написаниях, издалека,
+  # и команда в той же фразе («Волтэр, пауза»). openwakeword — обученная модель (model).
+  engine: "stt"
+  vad_threshold: 0.3        # ниже — чувствительнее к тихой речи, но больше распознаваний
+  pattern: ""               # своё имя регуляркой; пусто — «Волтэр»
   # Своей модели «Волтер» ещё нет. Встроенные: hey_jarvis, alexa, hey_mycroft.
   # Одним словом (jarvis, alfred, winston, computer) — из коллекции сообщества:
   # https://github.com/fwartner/home-assistant-wakewords-collection, скачать .onnx в wakewords/

@@ -20,8 +20,14 @@ class AudioConfig(BaseModel):
 
 
 class WakeConfig(BaseModel):
+    # openwakeword — обученная модель (model); stt — имя по распознаванию речи (pattern).
+    engine: str = "openwakeword"
     model: str = "hey_jarvis"
     threshold: float = 0.5
+    # Для engine: stt. Пусто — «Волтэр» во всех написаниях GigaAM.
+    pattern: str = ""
+    # Ниже — чувствительнее к тихой речи издалека, но чаще распознаёт шум.
+    vad_threshold: float = 0.3
 
 
 class ListenConfig(BaseModel):
