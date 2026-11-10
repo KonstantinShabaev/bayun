@@ -11,7 +11,7 @@ from typing import Any
 # Имя впереди фразы STT пишет по-разному: «Джарвис», «Джарс», «Джарль».
 # «Волтэр» GigaAM пишет как «Уалтер», «Wалтер», «алтер», «Валтер».
 _NAME = re.compile(
-    r"^(джар\w*|jarvis|баюн|\w{0,3}(?:ал|ол|al|ol)т[еэe]р\w*)[,.!\s]*", re.IGNORECASE
+    r"^(джар\w*|jarvis|баюн|\w{0,3}(?:ал|ол|al|ol)[тt][еэe][рr]\w*)[,.!\s]*", re.IGNORECASE
 )
 _FILLER = re.compile(r"\b(пожалуйста|давай|ну|а|э+)\b", re.IGNORECASE)
 
