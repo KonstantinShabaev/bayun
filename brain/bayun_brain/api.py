@@ -39,6 +39,7 @@ from .video import NAMES as VIDEO_NAMES
 from .video import PROMPT as VIDEO_PROMPT
 from .video import TOOLS as VIDEO_TOOLS
 from .video import Video
+from .weather import Weather
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ def create_app(
     video: Video | None = None,
     code: CodeTasks | None = None,
     memory: Memory | None = None,
+    weather: Weather | None = None,
 ) -> FastAPI:
     """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома,
     `video=None` — без телевизора, `code=None` — без задач Claude Code,
@@ -184,6 +186,11 @@ def create_app(
             return
         if memory is not None and (answer := quick.answer(request.text, memory, time.time())):
             _LOGGER.info("Быстрый ответ без LLM: %s", answer)
+            conversations.remember(conversation_id, request.text, answer)
+            yield answer
+            return
+        if weather is not None and (answer := await weather.answer(request.text)):
+            _LOGGER.info("Погода без LLM: %s", answer)
             conversations.remember(conversation_id, request.text, answer)
             yield answer
             return

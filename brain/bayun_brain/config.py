@@ -44,6 +44,14 @@ class VideoConfig(BaseModel):
     agent_url: str = ""
 
 
+class WeatherConfig(BaseModel):
+    """Погода из Open-Meteo без LLM. Без координат — только через поиск LLM."""
+
+    latitude: float | None = None
+    longitude: float | None = None
+    timezone: str = "auto"
+
+
 class CodeConfig(BaseModel):
     """Задачи Claude Code голосом (docs/claude-code-voice.md). Пусто — выключено."""
 
@@ -67,6 +75,7 @@ class Config(BaseModel):
     home_assistant: HomeAssistantConfig = HomeAssistantConfig()
     video: VideoConfig = VideoConfig()
     code: CodeConfig = CodeConfig()
+    weather: WeatherConfig = WeatherConfig()
     database: Path = Path("bayun.db")
     speaker_hint_window_s: float = 3.0
 

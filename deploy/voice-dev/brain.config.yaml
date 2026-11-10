@@ -11,6 +11,13 @@ assistant:
 
 database: "bayun.db"
 
+# Погода без LLM (Open-Meteo, ключ не нужен). open-meteo.com идёт через VPN:
+# напрямую с этого провайдера не открывается.
+weather:
+  latitude: 55.75
+  longitude: 37.62
+  timezone: "Europe/Moscow"
+
 home_assistant:
   url: "http://127.0.0.1:8123"   # HA в ВМ, проброшен на хост
   token_file: "~/.config/bayun/ha_token"

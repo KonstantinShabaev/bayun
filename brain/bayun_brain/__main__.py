@@ -13,6 +13,7 @@ from .ha import HomeAssistant
 from .llm import ChatModel, LiteLlmChat
 from .memory import Memory
 from .video import Video
+from .weather import Weather
 
 
 def run() -> None:
@@ -36,7 +37,11 @@ def run() -> None:
 
         code = CodeTasks(config.code, SdkSession(config.code), summarizer(chat))
     memory = Memory(config.database.expanduser())
-    app = create_app(config, chat, home, video, code, memory)
+    place = config.weather
+    weather = None
+    if place.latitude is not None and place.longitude is not None:
+        weather = Weather(place.latitude, place.longitude, place.timezone)
+    app = create_app(config, chat, home, video, code, memory, weather)
     # SSE /announcements не закрывается сам: не ждать его при остановке.
     uvicorn.run(app, host=args.host, port=args.port, timeout_graceful_shutdown=3)
 
