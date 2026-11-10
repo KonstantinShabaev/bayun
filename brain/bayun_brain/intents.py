@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 # Имя впереди фразы STT пишет по-разному: «Джарвис», «Джарс», «Джарль».
-_NAME = re.compile(r"^(джар\w*|jarvis|волтер|уолтер|баюн)[,.!\s]*", re.IGNORECASE)
+_NAME = re.compile(r"^(джар\w*|jarvis|walter|волт\w*|уолт\w*|уалт\w*|баюн)[,.!\s]*", re.IGNORECASE)
 _FILLER = re.compile(r"\b(пожалуйста|давай|ну|а|э+)\b", re.IGNORECASE)
 
 _NUMBERS = {
@@ -29,6 +29,10 @@ def _normalize(text: str) -> str:
     text = _NAME.sub("", text.strip().lower().replace("ё", "е"))
     text = _FILLER.sub(" ", text)
     return " ".join(re.sub(r"[^\w\s]", " ", text).split())
+
+
+# Общая чистка фразы для быстрых команд (memory/quick.py тоже).
+normalize = _normalize
 
 
 def _number(word: str | None, default: float) -> float:

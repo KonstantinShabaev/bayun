@@ -11,6 +11,7 @@ from .code import CodeTasks
 from .config import load_config
 from .ha import HomeAssistant
 from .llm import ChatModel, LiteLlmChat
+from .memory import Memory
 from .video import Video
 
 
@@ -34,7 +35,9 @@ def run() -> None:
         from .code.summary import summarizer
 
         code = CodeTasks(config.code, SdkSession(config.code), summarizer(chat))
-    uvicorn.run(create_app(config, chat, home, video, code), host=args.host, port=args.port)
+    memory = Memory(config.database.expanduser())
+    app = create_app(config, chat, home, video, code, memory)
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

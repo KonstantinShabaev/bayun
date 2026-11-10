@@ -37,3 +37,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
   decision TEXT NOT NULL CHECK (decision IN ('allowed', 'confirmed', 'denied')),
   result TEXT
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('timer', 'reminder')),
+  text TEXT NOT NULL,             -- «выключить плиту»; у таймера — пусто или подпись
+  due_at REAL NOT NULL,           -- unix time
+  created_at REAL NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0
+);

@@ -6,17 +6,18 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import __version__, intents
+from . import __version__, home_quick, intents
 from .code import PROMPT as CODE_PROMPT
 from .code import TOOL_NAMES as CODE_TOOL_NAMES
 from .code import TOOLS as CODE_TOOLS
-from .code import Announcements, CodeTasks
+from .code import Announcement, Announcements, CodeTasks
 from .config import Config
 from .ha import TOOL, Device, HomeAssistant, devices_prompt, parse_args
 from .llm import (
@@ -31,6 +32,9 @@ from .llm import (
     agent_sentences,
     reply_sentences,
 )
+from .memory import TOOL_NAMES as MEMORY_TOOL_NAMES
+from .memory import TOOLS as MEMORY_TOOLS
+from .memory import Memory, quick
 from .video import NAMES as VIDEO_NAMES
 from .video import PROMPT as VIDEO_PROMPT
 from .video import TOOLS as VIDEO_TOOLS
@@ -38,7 +42,7 @@ from .video import Video
 
 _LOGGER = logging.getLogger(__name__)
 
-OFFLINE_SPEECH = "Облако сейчас недоступно, попробуй чуть позже."
+OFFLINE_SPEECH = "Нет связи с облаком, думать сейчас не могу. Время, таймеры и свет работают и так."
 
 
 class ConverseRequest(BaseModel):
@@ -102,14 +106,48 @@ def create_app(
     home: HomeAssistant | None = None,
     video: Video | None = None,
     code: CodeTasks | None = None,
+    memory: Memory | None = None,
 ) -> FastAPI:
     """`chat=None` — заглушка без LLM (тесты, стенд без ключа). `home=None` — без дома,
-    `video=None` — без телевизора, `code=None` — без задач Claude Code."""
+    `video=None` — без телевизора, `code=None` — без задач Claude Code,
+    `memory=None` — без долгой памяти и таймеров."""
     config = config or Config()
-    app = FastAPI(title="bayun-brain", version=__version__)
     hints = HintStore(window_s=config.speaker_hint_window_s)
     conversations = Conversations(config.assistant.history_turns)
     announcements = code.announcements if code is not None else Announcements()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        task = None
+        if memory is not None:
+            task = asyncio.create_task(
+                memory.run_reminders(lambda text: announcements.publish(Announcement(text)))
+            )
+        yield
+        if task is not None:
+            task.cancel()
+
+    app = FastAPI(title="bayun-brain", version=__version__, lifespan=lifespan)
+
+    async def quick_light(text: str) -> str | None:
+        """«Включи свет» без LLM. None — пусть разбирается модель."""
+        if home is None or (command := home_quick.match(text)) is None:
+            return None
+        try:
+            devices = await home.devices()
+        except Exception:
+            _LOGGER.exception("Home Assistant не ответил")
+            return "Умный дом сейчас не отвечает."
+        lights = [(d.entity_id, d.name) for d in devices if d.domain == "light"]
+        calls = command.calls(lights)
+        if not calls:
+            return None
+        outcomes = [await home.control(devices, call) for call in calls]
+        if any(o.startswith("Не получилось") for o in outcomes):
+            return "Не получилось, умный дом ответил ошибкой."
+        if command.brightness_pct is not None:
+            return "Готово."
+        return "Включаю." if command.action == "turn_on" else "Выключаю."
 
     async def sentences(request: ConverseRequest, conversation_id: str) -> AsyncIterator[str]:
         speaker = hints.speaker_for(time.time())
@@ -118,6 +156,16 @@ def create_app(
             yield await code.run(
                 "code_answer", {"text": request.text}, request.device_id, request.conversation_id
             )
+            return
+        if memory is not None and (answer := quick.answer(request.text, memory, time.time())):
+            _LOGGER.info("Быстрый ответ без LLM: %s", answer)
+            conversations.remember(conversation_id, request.text, answer)
+            yield answer
+            return
+        if (answer := await quick_light(request.text)) is not None:
+            _LOGGER.info("Свет без LLM: %s", answer)
+            conversations.remember(conversation_id, request.text, answer)
+            yield answer
             return
         if video is not None and (intent := intents.match(request.text)):
             started = time.monotonic()
@@ -155,6 +203,9 @@ def create_app(
         if code is not None:
             system += CODE_PROMPT + code.prompt_hint()
             tools += CODE_TOOLS
+        if memory is not None:
+            system += memory.prompt()
+            tools += MEMORY_TOOLS
         if request.audio_tags:
             system += AUDIO_TAGS_PROMPT
         if speaker != "guest":
@@ -173,6 +224,11 @@ def create_app(
                 elif call.name == "web_search" and search is not None:
                     question = str(args.get("question") or request.text)
                     outcome = Final(await search(question))
+                elif call.name in MEMORY_TOOL_NAMES and memory is not None:
+                    if call.name == "list_reminders":
+                        outcome = memory.run(call.name, {"with_id": True})
+                    else:
+                        outcome = Final(memory.run(call.name, args))
                 elif call.name in CODE_TOOL_NAMES and code is not None:
                     outcome = Final(
                         await code.run(call.name, args, request.device_id, conversation_id)
