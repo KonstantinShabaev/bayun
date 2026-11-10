@@ -35,6 +35,10 @@ STOP_WORDS = re.compile(r"\b(стоп|хватит|замолчи|помолчи
 
 TROUBLE_SPEECH = "Что-то сломалось у меня внутри, загляни в журнал."
 
+# Частые короткие ответы brain: синтезируются при старте и звучат без задержки.
+COMMON_REPLIES = ["Готово.", "Включаю.", "Выключаю.", "Запомнил.", "Отменил.", "Забыл."]
+CACHE_MAX_CHARS = 40
+
 
 class VoiceLoop:
     def __init__(self, config: Config, status: Status) -> None:
@@ -63,6 +67,9 @@ class VoiceLoop:
         self.fillers = itertools.cycle(
             [self.tts.synthesize(f) for f in config.reply.fillers] or [b""]
         )
+        self._speech_cache: dict[str, bytes] = {}
+        for text in COMMON_REPLIES:
+            self.synthesize(text)
         _LOGGER.info(
             "Готово: имя %s, VAD %s, STT %s, голос %s",
             self.wake.name,
@@ -245,7 +252,7 @@ class VoiceLoop:
                 turn.continue_conversation = False
                 self.status.set(phase="error")
                 self.status.log("system", "brain не ответил")
-                player.add(self.tts.synthesize(TROUBLE_SPEECH))
+                player.add(self.synthesize(TROUBLE_SPEECH))
             else:
                 if first:
                     first = False
@@ -256,7 +263,7 @@ class VoiceLoop:
                         timings={**self.status.state["timings"], "first_s": first_s},
                     )
                 self.status.log("bayun", strip_audio_tags(item))
-                player.add(self.tts.synthesize(item))
+                player.add(self.synthesize(item))
         return False
 
     def _said_with_name(self) -> str:
@@ -311,7 +318,17 @@ class VoiceLoop:
         return False
 
     def say(self, text: str) -> None:
-        self.say_raw(self.tts.synthesize(text))
+        self.say_raw(self.synthesize(text))
+
+    def synthesize(self, text: str) -> bytes:
+        """Короткие фразы повторяются («Готово.»): синтез один раз."""
+        if len(text) > CACHE_MAX_CHARS:
+            return self.tts.synthesize(text)
+        if text not in self._speech_cache:
+            if len(self._speech_cache) > 200:
+                self._speech_cache.clear()
+            self._speech_cache[text] = self.tts.synthesize(text)
+        return self._speech_cache[text]
 
     def say_raw(self, pcm: bytes) -> None:
         playback = Playback(self.tts.rate, self.config.audio.output_device)

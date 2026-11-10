@@ -55,7 +55,7 @@ class Outage:
     и запасной моделью — до минуты тишины.
     """
 
-    cooldown_s: float = 60.0
+    cooldown_s: float = 30.0
     down_until: float = 0.0
     last_error: str = ""
 
