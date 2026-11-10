@@ -18,6 +18,7 @@ from pathlib import Path
 
 from bayun_stt.asr import load_engine
 
+from .announce import Announcement, Announcer
 from .audio import Ducker, Frame, Mic, Playback, Player, PlayerDucker, beep
 from .brain_client import BrainClient, Turn
 from .config import Config, load_config
@@ -50,6 +51,7 @@ class VoiceLoop:
         )
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
+        self.announcer = Announcer(config.brain.url)
         self.mic = Mic(config.audio.input_device)
         audio = config.audio
         self.ducker: Ducker | PlayerDucker = (
@@ -74,6 +76,7 @@ class VoiceLoop:
         # systemd и kill шлют SIGTERM: сначала вернуть громкость видео.
         signal.signal(signal.SIGTERM, self._terminate)
         self.mic.start()
+        self.announcer.start()
         self.status.set(phase="idle", wake_word=self.wake.name.replace("_", " "))
         while True:
             if self.wait_for_wake():
@@ -86,6 +89,9 @@ class VoiceLoop:
 
     def wait_for_wake(self) -> bool:
         while True:
+            if (announcement := self.announcer.next()) is not None:
+                self.announce(announcement)
+                continue
             if self.status.talk.is_set():
                 self.status.talk.clear()
                 _LOGGER.info("Кнопка «Говорить»")
@@ -114,12 +120,30 @@ class VoiceLoop:
             except OSError as error:
                 _LOGGER.warning("Не смог разбудить экран: %s", error)
 
-    def conversation(self) -> None:
-        turn = Turn()
+    def announce(self, announcement: Announcement) -> None:
+        """Сработал таймер или Claude Code спрашивает: говорим сами, без имени."""
+        _LOGGER.info("Объявление: %s", announcement.text)
+        self.wake_screen()
+        self.ducker.duck()
+        try:
+            self.status.set(phase="speaking")
+            self.status.log("bayun", strip_audio_tags(announcement.text))
+            self.say(announcement.text)
+            if announcement.expects_reply:
+                self.conversation(Turn(announcement.conversation_id), listen_first=True)
+        finally:
+            self.ducker.restore()
+            self.wake.reset()
+            self.mic.drain()
+            self.status.set(phase="idle", level=0.0)
+
+    def conversation(self, turn: Turn | None = None, listen_first: bool = False) -> None:
+        turn = turn or Turn()
         timeout = self.config.listen.start_timeout_s
         while True:
             # «Волтэр, включи свет» одной фразой: команда уже распознана вместе с именем.
-            text = self._said_with_name()
+            text = "" if listen_first else self._said_with_name()
+            listen_first = False
             if text:
                 _LOGGER.info("Вместе с именем: %r", text)
                 self.status.log("user", text)
