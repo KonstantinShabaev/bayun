@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 
 # Имя впереди фразы STT пишет по-разному: «Джарвис», «Джарс», «Джарль».
-_NAME = re.compile(r"^(джар\w*|jarvis|walter|волт\w*|уолт\w*|уалт\w*|баюн)[,.!\s]*", re.IGNORECASE)
+# «Волтэр» GigaAM пишет как «Уалтер», «Wалтер», «алтер», «Валтер».
+_NAME = re.compile(
+    r"^(джар\w*|jarvis|баюн|\w{0,3}(?:ал|ол|al|ol)т[еэe]р\w*)[,.!\s]*", re.IGNORECASE
+)
 _FILLER = re.compile(r"\b(пожалуйста|давай|ну|а|э+)\b", re.IGNORECASE)
 
 _NUMBERS = {

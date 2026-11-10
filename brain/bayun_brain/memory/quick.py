@@ -36,6 +36,13 @@ _CANCEL = re.compile(
 _FACTS = {"что ты помнишь", "что ты запомнил", "что ты знаешь", "что ты обо мне знаешь",
           "что ты знаешь обо мне", "что ты знаешь о доме"}  # fmt: skip
 
+_HELP = {"что ты умеешь", "что ты можешь", "что умеешь", "помощь", "как тобой пользоваться"}
+HELP_SPEECH = (
+    "Включаю и выключаю свет, ставлю видео и фильмы на телевизоре, ставлю таймеры "
+    "и напоминания, запоминаю, что скажешь, ищу ответы в интернете и просто болтаю. "
+    "Зови по имени и говори сразу, что нужно."
+)
+
 _TIMER = re.compile(
     r"^(?:поставь\s+|заведи\s+|включи\s+|засеки\s+)?(?:таймер\s+)?(?:на\s+)?(?P<span>.+)$"
 )
@@ -86,6 +93,8 @@ def answer(text: str, memory: Memory, now: float) -> str | None:
         return f"Сейчас {clock_words(local.hour, local.minute)}."
     if phrase in _DATE:
         return f"Сегодня {_WEEKDAYS[local.weekday()]}, {local.day} {_MONTHS[local.month - 1]}."
+    if phrase in _HELP:
+        return HELP_SPEECH
     if phrase in _LIST:
         return memory.run("list_reminders", {})
     if _CANCEL.match(phrase):

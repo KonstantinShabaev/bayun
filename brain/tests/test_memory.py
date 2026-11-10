@@ -88,6 +88,15 @@ def test_reminder_survives_restart(tmp_path, clock: Clock) -> None:
     assert [r.text for r in Memory(db, clock=clock).due()] == ["проверить духовку"]
 
 
+def test_help(memory: Memory) -> None:
+    assert ask(memory, "Волтэр, что ты умеешь?") == quick.HELP_SPEECH
+
+
+def test_name_spellings(memory: Memory) -> None:
+    for name in ["Уалтер", "Wалтер", "алтер", "Валтер", "Уолтер", "Walter", "Джарвис"]:
+        assert ask(memory, f"{name}, что ты умеешь?") == quick.HELP_SPEECH, name
+
+
 def test_not_quick(memory: Memory) -> None:
     for text in ["расскажи анекдот", "какая погода", "таймер", "включи свет", "напомни"]:
         assert ask(memory, text) is None, text
