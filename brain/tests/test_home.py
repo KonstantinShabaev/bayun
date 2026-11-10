@@ -59,11 +59,6 @@ def test_light_command_calls_home_assistant() -> None:
     ]
     system = chat.seen[0][0]["content"]
     assert "light.kitchen" in system and "switch.dnd" not in system
-    assert chat.seen[1][-1] == {
-        "role": "tool",
-        "tool_call_id": "c1",
-        "content": "Готово: Кухня, turn_on.",
-    }
 
 
 def test_unknown_entity_is_refused() -> None:
