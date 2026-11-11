@@ -375,12 +375,24 @@ function onState(s) {
   lastPhase = s.phase;
   renderPhase(); renderTalk(); renderAlert();
 }
+let boot = null, heardAt = Date.now(), source = null;
 function connect() {
-  const es = new EventSource("events");
+  const es = source = new EventSource("events");
   es.onopen = () => { connected = true; renderAll(); };
-  es.onmessage = e => { connected = true; onState(JSON.parse(e.data)); };
+  es.onmessage = e => {
+    connected = true; heardAt = Date.now();
+    const s = JSON.parse(e.data);
+    // Голосовой цикл перезапустили — возможно, с новой страницей: берём её.
+    if (boot !== null && s.boot && s.boot !== boot) { location.reload(); return; }
+    boot = s.boot || boot;
+    onState(s);
+  };
   es.onerror = () => { es.close(); connected = false; renderAll(); setTimeout(connect, 2000); };
 }
+// Сервер шлёт что-то хотя бы раз в 15 с; дольше тишина — поток завис, переподключаемся.
+setInterval(() => {
+  if (source && Date.now() - heardAt > 40000) { source.close(); heardAt = Date.now(); connect(); }
+}, 5000);
 function loadBoard() {
   fetch("brain/api/dashboard").then(r => r.ok ? r.json() : Promise.reject())
     .then(d => { dash = d; skew = Date.now() / 1000 - d.now; })

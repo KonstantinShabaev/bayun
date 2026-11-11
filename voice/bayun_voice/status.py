@@ -28,7 +28,14 @@ class Status:
     def __init__(self) -> None:
         self._lock = threading.Condition()
         self._version = 0
-        self.state: dict[str, Any] = {"phase": "idle", "log": [], "timings": {}, "level": 0.0}
+        # boot: экран перезагружает себя, когда голосовой цикл перезапустили (новая версия).
+        self.state: dict[str, Any] = {
+            "phase": "idle",
+            "log": [],
+            "timings": {},
+            "level": 0.0,
+            "boot": time.time(),
+        }
         self.talk = threading.Event()
         # С пульта: str — текст команды, bytes — запись с микрофона телефона.
         self.inbox: queue.Queue[str | bytes] = queue.Queue(maxsize=4)
