@@ -39,7 +39,7 @@ STOP_WORDS = re.compile(r"\b(стоп|хватит|замолчи|помолчи
 TROUBLE_SPEECH = "Что-то сломалось у меня внутри, загляни в журнал."
 
 # Частые короткие ответы brain: синтезируются при старте и звучат без задержки.
-COMMON_REPLIES = ["Готово.", "Включаю.", "Выключаю.", "Запомнил.", "Отменил.", "Забыл."]
+COMMON_REPLIES = ["Да?", "Готово.", "Включаю.", "Выключаю.", "Запомнил.", "Отменил.", "Забыл."]
 CACHE_MAX_CHARS = 40
 
 
@@ -182,6 +182,8 @@ class VoiceLoop:
         # Сразу после имени в очереди уже начало команды: его не выбрасываем.
         # После своей речи (объявление, ответ) — выбрасываем эхо.
         keep_queue = not listen_first
+        # Позвали по имени (а не объявление и не пульт) — откликнуться, если команды нет.
+        acknowledge = not listen_first and self.status.inbox.empty()
         while True:
             # «Волтэр, включи свет» одной фразой: команда уже распознана вместе с именем.
             remote = None if listen_first else self._from_remote()
@@ -197,6 +199,10 @@ class VoiceLoop:
             else:
                 if self.config.listen.beep and timeout == self.config.listen.start_timeout_s:
                     self.say_raw(beep(self.tts.rate, volume=0.1))
+                if acknowledge:
+                    # Без отклика Костя не знал, услышал ли Баюн, и звал снова и снова.
+                    acknowledge = False
+                    self.acknowledge()
                 pcm = self.record(timeout, drain=not keep_queue)
                 keep_queue = False
                 if pcm is None:
@@ -207,6 +213,7 @@ class VoiceLoop:
                     # Позвали ещё раз («Волтэр?»), не дождавшись: это не команда.
                     _LOGGER.info("Только имя, слушаю дальше")
                     timeout = self.config.listen.start_timeout_s
+                    acknowledge = True
                     continue
                 if not text:
                     break
@@ -327,6 +334,12 @@ class VoiceLoop:
                 self._spoken += " " + item.lower()
                 player.add(self.synthesize(item))
         return None
+
+    def acknowledge(self) -> None:
+        if self.config.reply.ack:
+            self.status.set(phase="speaking")
+            self.say(self.config.reply.ack)
+            self.mic.drain()
 
     def _from_remote(self) -> str | None:
         """Команда с пульта телефона: текст как есть, голос — через то же распознавание.
