@@ -10,7 +10,7 @@ import contextlib
 import logging
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -100,6 +100,7 @@ class Reminder:
     kind: str
     text: str
     due_at: float
+    rings: int = 0
 
     def speech(self, now: float | None = None) -> str:
         """Что сказать, когда срок пришёл."""
@@ -197,9 +198,23 @@ class Memory:
 
     def pending(self) -> list[Reminder]:
         rows = self._db.execute(
-            "SELECT id, kind, text, due_at FROM reminders WHERE done = 0 ORDER BY due_at"
+            "SELECT id, kind, text, due_at, rings FROM reminders WHERE done = 0 ORDER BY due_at"
         ).fetchall()
         return [Reminder(*row) for row in rows]
+
+    def today(self) -> list[Reminder]:
+        """Напоминания до конца сегодняшнего дня (для утренней сводки)."""
+        now = datetime.fromtimestamp(self._clock())
+        midnight = now.replace(hour=23, minute=59, second=59).timestamp()
+        return [r for r in self.pending() if r.kind == "reminder" and r.due_at <= midnight]
+
+    def day_speech(self) -> str:
+        """«Сегодня: позвонить маме в четырнадцать часов.» или пусто."""
+        items = []
+        for r in self.today()[:4]:
+            when = datetime.fromtimestamp(r.due_at)
+            items.append(f"{r.text} в {time_words(when.hour, when.minute)}")
+        return f"Сегодня: {', '.join(items)}." if items else ""
 
     def cancel(self, reminder_id: int | None = None) -> int:
         if reminder_id is None:
@@ -251,7 +266,7 @@ class Memory:
         return cursor.rowcount
 
     async def run_reminders(
-        self, announce: Callable[[str, bool], None], tick_s: float = 1.0
+        self, announce: Callable[[Reminder], Awaitable[None]], tick_s: float = 1.0
     ) -> None:
         """Фоновая задача brain: произносит напоминания, когда приходит срок.
 
@@ -261,8 +276,7 @@ class Memory:
             try:
                 for reminder in self.due():
                     _LOGGER.info("Сработало напоминание %s: %s", reminder.id, reminder.text)
-                    # Будильник ждёт «стоп» без имени.
-                    announce(reminder.speech(self._clock()), reminder.kind == "alarm")
+                    await announce(reminder)
             except Exception:
                 # Одна ошибка не должна навсегда выключить напоминания.
                 _LOGGER.exception("Напоминания: ошибка")

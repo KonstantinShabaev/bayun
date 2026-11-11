@@ -134,7 +134,11 @@ def test_llm_tools(memory: Memory) -> None:
 async def test_run_reminders_announces(memory: Memory, clock: Clock) -> None:
     said: list[str] = []
     memory.add_reminder("reminder", "полить цветы", NOW + 1)
-    task = asyncio.create_task(memory.run_reminders(lambda t, _: said.append(t), tick_s=0.01))
+
+    async def announce(reminder: Reminder) -> None:
+        said.append(reminder.speech())
+
+    task = asyncio.create_task(memory.run_reminders(announce, tick_s=0.01))
     await asyncio.sleep(0.03)
     assert said == []
     clock.now += 2
@@ -299,3 +303,21 @@ def test_dashboard_api(tmp_path) -> None:
     assert client.delete(f"/api/reminders/{rid}").json() == {"deleted": 1}
     assert client.delete("/api/facts/1").json() == {"deleted": 1}
     assert client.get("/api/dashboard").json()["reminders"] == []
+
+
+def test_day_speech(memory: Memory) -> None:
+    assert memory.day_speech() == ""
+    memory.set_reminder("позвонить маме", at="14:00")
+    memory.set_reminder("", in_seconds=60)
+    assert memory.day_speech() == "Сегодня: позвонить маме в четырнадцать часов."
+
+
+def test_good_morning_briefing(tmp_path) -> None:
+    from bayun_brain.api import create_app
+    from fastapi.testclient import TestClient
+
+    memory = Memory(tmp_path / "bayun.db")
+    memory.set_reminder("полить цветы", in_seconds=60)
+    client = TestClient(create_app(memory=memory))
+    speech = client.post("/converse", json={"text": "Доброе утро"}).json()["speech"]
+    assert speech.startswith("Доброе утро! Сегодня: полить цветы в")

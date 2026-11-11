@@ -1,6 +1,7 @@
 """HTTP API: /converse, /converse/stream, /speaker-hint, /health (docs/PROJECT_SPEC.md, §4.2)."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -36,11 +37,14 @@ from .llm import (
 from .memory import TOOL_NAMES as MEMORY_TOOL_NAMES
 from .memory import TOOLS as MEMORY_TOOLS
 from .memory import Memory, quick
+from .memory.store import Reminder
 from .video import NAMES as VIDEO_NAMES
 from .video import PROMPT as VIDEO_PROMPT
 from .video import TOOLS as VIDEO_TOOLS
 from .video import Video
 from .weather import Weather
+from .weather import kind as weather_kind
+from .weather import speech as speech_weather
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -154,15 +158,29 @@ def create_app(
     announcements = code.announcements if code is not None else Announcements()
     outage = Outage()
 
+    async def briefing() -> str:
+        """Погода и дела на сегодня: после будильника и на «доброе утро»."""
+        parts = []
+        if weather is not None:
+            with contextlib.suppress(Exception):
+                parts.append(speech_weather("now", await weather.data()))
+        if memory is not None and (day := memory.day_speech()):
+            parts.append(day)
+        return " ".join(parts)
+
+    async def announce(reminder: Reminder) -> None:
+        text = reminder.speech(time.time())
+        if reminder.kind == "alarm" and reminder.rings == 0:
+            # Первый звонок будильника — сразу со сводкой на день.
+            text = f"{text} {await briefing()}".strip()
+        # Будильник ждёт «стоп» без имени.
+        announcements.publish(Announcement(text, listen=reminder.kind == "alarm"))
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         task = None
         if memory is not None:
-            task = asyncio.create_task(
-                memory.run_reminders(
-                    lambda text, listen: announcements.publish(Announcement(text, listen=listen))
-                )
-            )
+            task = asyncio.create_task(memory.run_reminders(announce))
         yield
         if task is not None:
             task.cancel()
@@ -203,6 +221,11 @@ def create_app(
             return
         if memory is not None and (answer := quick.answer(request.text, memory, time.time())):
             _LOGGER.info("Быстрый ответ без LLM: %s", answer)
+            conversations.remember(conversation_id, request.text, answer)
+            yield answer
+            return
+        if weather_kind(request.text) == "morning":
+            answer = f"Доброе утро! {await briefing()}".strip()
             conversations.remember(conversation_id, request.text, answer)
             yield answer
             return
