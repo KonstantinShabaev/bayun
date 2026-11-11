@@ -58,7 +58,7 @@ class VoiceLoop:
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.announcer = Announcer(config.brain.url)
-        self._mic_alive_at = time.monotonic()
+        self._mic_zero_since: float | None = None
         self.mic = Mic(config.audio.input_device)
         audio = config.audio
         self.ducker: Ducker | PlayerDucker = (
@@ -120,15 +120,18 @@ class VoiceLoop:
                 _LOGGER.info("Почти имя (%.2f)", score)
 
     def watch_mic(self, frame: Frame) -> None:
-        """Живой микрофон всегда немного шумит; сплошные нули — его выключили."""
+        """Живой микрофон всегда немного шумит; сплошные нули подряд — его выключили."""
         now = time.monotonic()
         silent = self.status.state.get("mic") == "silent"
         if frame.any():
-            self._mic_alive_at = now
+            self._mic_zero_since = None
             if silent:
                 _LOGGER.info("Микрофон снова слышит")
                 self.status.set(mic="ok")
-        elif not silent and now - self._mic_alive_at > MIC_SILENT_S:
+            return
+        if self._mic_zero_since is None:
+            self._mic_zero_since = now
+        elif not silent and now - self._mic_zero_since > MIC_SILENT_S:
             _LOGGER.warning("Микрофон присылает тишину: выключен кнопкой или отвалился")
             self.status.set(mic="silent")
 

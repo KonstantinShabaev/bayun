@@ -62,7 +62,10 @@ YOUTUBE_PAGE_JS = """(() => {
     if (p.classList.contains('ad-showing')) {
       const skip = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
       if (skip) skip.click();
-      else if (v && isFinite(v.duration) && v.duration > 0) { v.muted = true; v.currentTime = v.duration; }
+      // Only a short clip can be an ad: with uBlock the class may stick to the film itself.
+      else if (v && isFinite(v.duration) && v.duration > 0 && v.duration < 180) {
+        v.muted = true; v.currentTime = v.duration;
+      }
     } else if (v && v.muted && v.dataset.bayunMuted !== '1') {
       v.muted = false;  // never leave a video muted after an ad
       if (p.isMuted && p.isMuted()) p.unMute();
