@@ -64,6 +64,8 @@ class Device:
     name: str
     state: str
     options: tuple[str, ...] = ()
+    # Группа ламп в HA: её лампы (attributes.entity_id).
+    members: tuple[str, ...] = ()
 
     @property
     def domain(self) -> str:
@@ -88,6 +90,7 @@ class HomeAssistant:
                 s["attributes"].get("friendly_name", s["entity_id"]),
                 s["state"],
                 tuple(s["attributes"].get("options") or ()),
+                tuple(s["attributes"].get("entity_id") or ()),
             )
             for s in response.json()
             if s["entity_id"].split(".", 1)[0] in DOMAINS and s["state"] != "unavailable"
@@ -122,13 +125,16 @@ def devices_prompt(devices: list[Device]) -> str:
     lines = "\n".join(
         f"- {d.name} ({d.entity_id}): {d.state}"
         + (f"; варианты: {', '.join(d.options)}" if d.options else "")
+        + (f"; группа из {', '.join(d.members)}" if d.members else "")
         for d in devices
     )
     return (
         "\nТы управляешь домом инструментом control_device. Устройства сейчас:\n"
         f"{lines}\n"
         "Если просят сделать с устройством что-то, вызови инструмент, а потом коротко "
-        "скажи, что сделал. Про «весь свет» — вызови для каждой лампы."
+        "скажи, что сделал. Про «весь свет» — вызови для каждой лампы, а если есть "
+        "группа — только для группы. Белый — color_temp_kelvin 4500, тёплый — 2700, "
+        "холодный — 6500, цвет — color_name. Пустых вызовов без entity_id не делай."
     )
 
 

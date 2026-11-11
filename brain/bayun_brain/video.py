@@ -5,6 +5,7 @@ HTTP за десятки миллисекунд. brain только перево
 """
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -123,6 +124,10 @@ class Video:
         self._client = httpx.AsyncClient(base_url=url, timeout=30, transport=transport)
         # Откуда были последние результаты, чтобы «включи второй» знал, где искать.
         self._last_source = "youtube"
+        # Что и когда включили последним: повторное «включи первый» (часто это речь
+        # из самого фильма, услышанная в продолжении разговора) не перезапускает фильм.
+        self._last_play: tuple[str, int, float] | None = None
+        self.replay_guard_s = 120.0
 
     async def _post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
@@ -150,6 +155,7 @@ class Video:
                 return "Не сказали, что искать."
             source = SOURCES.get(str(args.get("source")), "youtube")
             self._last_source = source
+            self._last_play = None
             results = (await self._post(f"/{source}/search", {"q": query, "n": 8}))["results"]
             if not results:
                 return f"По запросу «{query}» ничего не нашлось."
@@ -159,9 +165,16 @@ class Video:
             # Номера и так нарисованы на экране: список вслух только мешает.
             return f"Нашёл {len(results)}, номера на экране. Какой включить?"
         if name == "play_result":
-            await self._post(f"/{self._last_source}/play", {"n": int(args.get("n") or 1)})
+            n = int(args.get("n") or 1)
+            now = time.monotonic()
+            last = self._last_play
+            if last and last[:2] == (self._last_source, n) and now - last[2] < self.replay_guard_s:
+                return "Уже идёт."
+            await self._post(f"/{self._last_source}/play", {"n": n})
+            self._last_play = (self._last_source, n, now)
             return "Включаю."
         if name == "stop_video":
+            self._last_play = None
             await self._post("/home")
             return "Видео выключено."
         if name == "control_video":
