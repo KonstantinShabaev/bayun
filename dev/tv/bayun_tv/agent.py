@@ -50,6 +50,10 @@ KIOSK_ARGS = [
     # uBlock Origin Lite (unpacked); Chromium 137+ needs the switch re-enabled.
     f"--load-extension={os.path.expanduser('~/.config/bayun/extensions/ubol')}",
     "--disable-features=Translate,DisableLoadExtensionCommandLineSwitch",
+    # The kiosk must keep painting even when KWin thinks it is hidden: otherwise the TV
+    # shows a frozen frame while the page itself keeps updating.
+    "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+    "--disable-background-timer-throttling",
 ]
 
 PAGE_SCRIPTS = "\n".join(
