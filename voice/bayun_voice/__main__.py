@@ -30,6 +30,8 @@ from .wake import OpenWakeWord, SttWake
 _LOGGER = logging.getLogger("bayun_voice")
 
 NEAR_MISS = 0.15
+# Микрофон отдаёт ровно ноль дольше этого — выключен кнопкой или завис.
+MIC_SILENT_S = 20.0
 
 STOP_WORDS = re.compile(r"\b(стоп|хватит|замолчи|помолчи|подожди|тихо|джарв\w*)\b")
 
@@ -56,6 +58,7 @@ class VoiceLoop:
         self.tts = load_tts(config.tts)
         self.brain = BrainClient(config.brain.url, config.brain.timeout_s)
         self.announcer = Announcer(config.brain.url)
+        self._mic_alive_at = time.monotonic()
         self.mic = Mic(config.audio.input_device)
         audio = config.audio
         self.ducker: Ducker | PlayerDucker = (
@@ -107,6 +110,7 @@ class VoiceLoop:
                 frame = self.mic.read(timeout=0.5)
             except queue.Empty:
                 continue
+            self.watch_mic(frame)
             score = self.wake(frame)
             if score >= self.config.wake.threshold:
                 _LOGGER.info("Имя услышано (%.2f)", score)
@@ -114,6 +118,19 @@ class VoiceLoop:
             if score >= NEAR_MISS:
                 # Похоже на имя, но не дотянуло: по журналу видно, не занижен ли порог.
                 _LOGGER.info("Почти имя (%.2f)", score)
+
+    def watch_mic(self, frame: Frame) -> None:
+        """Живой микрофон всегда немного шумит; сплошные нули — его выключили."""
+        now = time.monotonic()
+        silent = self.status.state.get("mic") == "silent"
+        if frame.any():
+            self._mic_alive_at = now
+            if silent:
+                _LOGGER.info("Микрофон снова слышит")
+                self.status.set(mic="ok")
+        elif not silent and now - self._mic_alive_at > MIC_SILENT_S:
+            _LOGGER.warning("Микрофон присылает тишину: выключен кнопкой или отвалился")
+            self.status.set(mic="silent")
 
     def _terminate(self, *_: object) -> None:
         self.ducker.restore()

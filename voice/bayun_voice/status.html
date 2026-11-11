@@ -30,6 +30,9 @@
   .bayun { align-self: flex-start; background: #1f3328; }
   .system { align-self: center; color: var(--muted); font-size: 18px; }
   .timings { color: var(--muted); font-size: 16px; text-align: center; min-height: 1.4em; }
+  .mic-off { background: #4a1f22; color: #ffd6d6; border-radius: 18px; padding: 16px 22px;
+             font-size: 24px; }
+  .mic-off[hidden] { display: none; }
   .right { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
   .board { display: flex; flex-wrap: wrap; gap: 16px; }
   .board:empty { display: none; }
@@ -59,6 +62,7 @@
   <div id="timings" class="timings"></div>
 </div>
 <div class="right">
+  <div id="micoff" class="mic-off" hidden>Микрофон ничего не слышит: проверь кнопку на нём (красный огонёк) или переподключи USB.</div>
   <div id="board" class="board"></div>
   <div id="log" class="log"></div>
 </div>
@@ -70,6 +74,7 @@ const log = document.getElementById("log"), timings = document.getElementById("t
 const wake = document.getElementById("wake");
 document.getElementById("talk").onclick = () => fetch("talk", { method: "POST" });
 function render(s) {
+  document.getElementById("micoff").hidden = s.mic !== "silent";
   orb.className = "orb " + s.phase;
   phase.textContent = PHASES[s.phase] || s.phase;
   wake.textContent = s.wake_word ? `Скажите «${s.wake_word}» или нажмите кнопку` : "";
