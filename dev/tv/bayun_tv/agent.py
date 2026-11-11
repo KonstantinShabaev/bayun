@@ -35,7 +35,10 @@ KIOSK_ARGS = [
     "--no-first-run", "--noerrdialogs", "--disable-session-crashed-bubble",
     "--autoplay-policy=no-user-gesture-required",
     # No "translate this page?" bubble over the Russian screen.
-    "--lang=ru", "--disable-features=Translate",
+    "--lang=ru",
+    # uBlock Origin Lite (unpacked); Chromium 137+ needs the switch re-enabled.
+    f"--load-extension={os.path.expanduser('~/.config/bayun/extensions/ubol')}",
+    "--disable-features=Translate,DisableLoadExtensionCommandLineSwitch",
 ]
 
 PAGE_SCRIPTS = "\n".join(open(os.path.join(HERE, name), encoding="utf-8").read()
