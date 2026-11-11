@@ -107,6 +107,8 @@ class VoiceLoop:
                 self.status.talk.clear()
                 _LOGGER.info("Кнопка «Говорить»")
                 return True
+            if not self.status.inbox.empty():
+                return True  # команда с пульта: conversation() заберёт её из inbox
             try:
                 frame = self.mic.read(timeout=0.5)
             except queue.Empty:
@@ -182,9 +184,14 @@ class VoiceLoop:
         keep_queue = not listen_first
         while True:
             # «Волтэр, включи свет» одной фразой: команда уже распознана вместе с именем.
-            text = "" if listen_first else self._said_with_name()
+            remote = None if listen_first else self._from_remote()
+            text = "" if listen_first or remote is not None else self._said_with_name()
             listen_first = False
-            if text:
+            if remote is not None:
+                text = remote
+                if not text:
+                    break  # голос с телефона не разобрали
+            elif text:
                 _LOGGER.info("Вместе с именем: %r", text)
                 self.status.log("user", text)
             else:
@@ -320,6 +327,20 @@ class VoiceLoop:
                 self._spoken += " " + item.lower()
                 player.add(self.synthesize(item))
         return None
+
+    def _from_remote(self) -> str | None:
+        """Команда с пульта телефона: текст как есть, голос — через то же распознавание.
+        None — с пульта ничего не приходило."""
+        try:
+            item = self.status.inbox.get_nowait()
+        except queue.Empty:
+            return None
+        if isinstance(item, bytes):
+            _LOGGER.info("Голос с пульта, %.1f с", len(item) / 32000)
+            return self.transcribe(item)
+        _LOGGER.info("Текст с пульта: %r", item)
+        self.status.log("user", item)
+        return item
 
     def _said_with_name(self) -> str:
         if not isinstance(self.wake, SttWake):

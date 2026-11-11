@@ -3,178 +3,409 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0d12">
 <title>Баюн</title>
 <style>
-  :root { --bg: #111418; --fg: #e8e6e3; --muted: #8a8f98; --idle: #3a3f47;
-          --listening: #3fa7ff; --thinking: #e8b33f; --speaking: #4fd18b; --error: #ff6b6b; }
+  /* TV screen of Bayun. Everything is sized in vh so the same page reads the same at 1080p and 4K.
+     Target: readable from 3 m on a 55" TV, i.e. body text >= 3.4vh, key numbers >= 8vh. */
+  :root {
+    --bg: #0b0d12; --panel: #141821; --panel2: #1b202b; --line: #262c39;
+    --fg: #f2f0ea; --muted: #9aa1ad; --faint: #5d6472;
+    --idle: #5d6472; --listening: #46b8ff; --thinking: #c58cff; --speaking: #3fdc9a;
+    --error: #ff6b6b; --warn: #ffc24a;
+    --c: var(--idle);
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 22px/1.4 system-ui, sans-serif; height: 100vh; display: grid;
-         grid-template-columns: minmax(280px, 1fr) 2fr; gap: 32px; padding: 32px; }
-  .left { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
-  .orb { width: 220px; height: 220px; border-radius: 50%; background: var(--idle);
-         transition: background .2s, transform .2s; }
-  .orb.listening { background: var(--listening); animation: pulse 1s infinite; }
-  .orb.thinking { background: var(--thinking); animation: pulse 0.6s infinite; }
-  .orb.speaking { background: var(--speaking); }
-  .orb.error { background: var(--error); }
-  @keyframes pulse { 50% { transform: scale(1.07); } }
-  .phase { font-size: 34px; }
-  button { font: inherit; font-size: 28px; padding: 18px 40px; border-radius: 16px; border: 0;
-           background: #2b3a4d; color: var(--fg); cursor: pointer; }
-  button:active { background: #3fa7ff; }
-  .hint { color: var(--muted); font-size: 18px; text-align: center; }
-  .log { overflow: auto; display: flex; flex-direction: column; gap: 14px; justify-content: flex-end; }
-  .msg { max-width: 90%; padding: 14px 20px; border-radius: 18px; }
-  .user { align-self: flex-end; background: #2b3a4d; }
-  .bayun { align-self: flex-start; background: #1f3328; }
-  .system { align-self: center; color: var(--muted); font-size: 18px; }
-  .timings { color: var(--muted); font-size: 16px; text-align: center; min-height: 1.4em; }
-  .mic-off { background: #4a1f22; color: #ffd6d6; border-radius: 18px; padding: 16px 22px;
-             font-size: 24px; }
-  .mic-off[hidden] { display: none; }
-  .right { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
-  .board { display: flex; flex-wrap: wrap; gap: 16px; }
-  .board:empty { display: none; }
-  .card { background: #1a1f26; border-radius: 18px; padding: 16px 20px; min-width: 220px;
-          flex: 1 1 220px; display: flex; flex-direction: column; gap: 10px; }
-  .card .hint { text-align: left; }
-  .card h3 { margin: 0; font-size: 17px; font-weight: 500; color: var(--muted);
-             text-transform: uppercase; letter-spacing: .06em; }
-  .big { font-size: 46px; line-height: 1; }
-  .item { display: flex; align-items: center; gap: 12px; }
-  .item .what { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-  .item .left-time { font-variant-numeric: tabular-nums; color: var(--thinking); }
-  .item.ringing .left-time { color: var(--error); animation: pulse .8s infinite; }
-  .x { font-size: 22px; padding: 6px 16px; border-radius: 12px; background: #2a2f38; }
-  .x:active { background: var(--error); }
-  .right .log { flex: 1; min-height: 0; }
-  @media (max-width: 800px) { body { grid-template-columns: 1fr; height: auto; }
-                              .orb { width: 140px; height: 140px; } }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); overflow: hidden; cursor: none;
+         font: 500 3.4vh/1.3 "Inter", "Segoe UI", "Noto Sans", system-ui, sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  body.phone { cursor: auto; }
+  .app { height: 100vh; display: grid; padding: 4vh 4.5vh; gap: 3vh;
+         grid-template-columns: 34% 1fr; grid-template-rows: auto minmax(0, 1fr) 25vh;
+         grid-template-areas: "top top" "orb talk" "bottom bottom"; }
+
+  /* top bar ---------------------------------------------------------------- */
+  .top { grid-area: top; display: flex; align-items: center; gap: 3vh; }
+  .clock { font-size: 9vh; font-weight: 600; line-height: 1; letter-spacing: -.02em;
+           font-variant-numeric: tabular-nums; }
+  .date { color: var(--muted); font-size: 3vh; line-height: 1.2; }
+  .date b { display: block; color: var(--fg); font-weight: 600; text-transform: capitalize; }
+  .spacer { flex: 1; }
+  .weather { display: flex; align-items: center; gap: 2vh; }
+  .weather .t { font-size: 7vh; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+  .weather .d { color: var(--muted); font-size: 2.8vh; line-height: 1.25; }
+  .weather .d b { color: var(--fg); font-weight: 600; display: block; }
+
+  /* orb -------------------------------------------------------------------- */
+  .orbcol { grid-area: orb; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 3.5vh; min-height: 0; }
+  .orbwrap { position: relative; flex: none; width: 30vh; height: 30vh; }
+  .orb, .ring { position: absolute; inset: 0; border-radius: 50%; }
+  .orb { background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%),
+                     radial-gradient(circle, var(--c) 0%, color-mix(in srgb, var(--c) 55%, #000) 70%);
+         box-shadow: 0 0 8vh color-mix(in srgb, var(--c) 45%, transparent);
+         transform: scale(calc(.82 + var(--lvl, 0) * .22)); transition: transform .12s linear, box-shadow .3s; }
+  .ring { border: .7vh solid var(--c); opacity: 0; }
+  body[data-phase="idle"] .orb { opacity: .45; transform: scale(.72); }
+  body[data-phase="listening"] .ring { animation: ripple 1.6s ease-out infinite; }
+  body[data-phase="listening"] .ring.r2 { animation-delay: .8s; }
+  body[data-phase="thinking"] .orb { animation: breathe 1s ease-in-out infinite; }
+  body[data-phase="thinking"] .ring { opacity: 1; border-color: transparent; border-top-color: var(--c);
+                                      inset: -3vh; animation: spin 1s linear infinite; }
+  body[data-phase="thinking"] .ring.r2 { animation-duration: 1.7s; inset: -5vh; opacity: .5; }
+  body[data-phase="loading"] .orb { animation: breathe 2s ease-in-out infinite; }
+  @keyframes ripple { from { transform: scale(.85); opacity: .9; } to { transform: scale(1.45); opacity: 0; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 50% { transform: scale(.9); } }
+  @keyframes blink { 50% { opacity: .35; } }
+  .phase { font-size: 6vh; font-weight: 600; line-height: 1; color: var(--c); text-align: center; }
+  body[data-phase="idle"] .phase { color: var(--fg); }
+  .sub { color: var(--muted); font-size: 3vh; text-align: center; max-width: 30ch; min-height: 2.6em; }
+  .sub b { color: var(--fg); }
+
+  /* conversation ----------------------------------------------------------- */
+  .talk { grid-area: talk; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end;
+          gap: 1.6vh; overflow: hidden;
+          -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18%); mask-image: linear-gradient(to bottom, transparent 0, #000 18%); }
+  .msg { max-width: 88%; padding: 1.6vh 2.6vh; border-radius: 2.6vh; font-size: 3.4vh; line-height: 1.3;
+         background: var(--panel); transition: opacity .3s; }
+  .msg .who { display: block; font-size: 2.1vh; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+              color: var(--muted); margin-bottom: .4vh; }
+  .msg .when { float: right; margin-left: 2vh; color: var(--faint); font-size: 2.1vh; font-weight: 500;
+               letter-spacing: 0; text-transform: none; }
+  .msg.user { align-self: flex-end; background: #1b2636; }
+  .msg.bayun { align-self: flex-start; background: #15291f; }
+  .msg.bayun .who { color: var(--speaking); }
+  .msg.user .who { color: var(--listening); }
+  .msg.system { align-self: center; background: none; color: var(--muted); font-size: 2.6vh; padding: .4vh; }
+  .msg.old { opacity: .5; font-size: 2.8vh; }
+  .msg.last { font-size: 4.4vh; }
+  .empty { color: var(--muted); font-size: 3.4vh; align-self: flex-start; }
+  .empty h2 { margin: 0 0 2vh; font-size: 4.4vh; color: var(--fg); font-weight: 600; }
+
+  /* bottom: timers + hints ------------------------------------------------- */
+  .bottom { grid-area: bottom; display: flex; gap: 2.4vh; align-items: stretch; min-height: 0; }
+  .card { background: var(--panel); border-radius: 2.6vh; padding: 2vh 2.6vh; display: flex; overflow: hidden;
+          flex-direction: column; gap: 1.2vh; min-width: 0; }
+  .card h3 { margin: 0; font-size: 2.1vh; font-weight: 700; color: var(--muted); letter-spacing: .1em;
+             text-transform: uppercase; }
+  .timers { flex: 0 1 auto; flex-direction: row; gap: 3vh; }
+  .timers[hidden], .facts[hidden], .playing[hidden] { display: none; }
+  .timer { display: flex; flex-direction: column; gap: .6vh; width: 20vh; }
+  .timer .what { color: var(--muted); font-size: 2.6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 20vh; }
+  .timer .left { font-size: 6.4vh; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: var(--warn); }
+  .timer .bar { height: .8vh; border-radius: .4vh; background: var(--line); overflow: hidden; }
+  .timer .bar i { display: block; height: 100%; background: var(--warn); }
+  .timer.soon .left { color: var(--error); }
+  .hints { flex: 1 1 0; min-width: 44vh; }
+  .chips { display: flex; flex-wrap: wrap; gap: 1.2vh; overflow: hidden; max-height: 12.6vh; }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 99vh; padding: .8vh 2vh;
+          font-size: 3vh; white-space: nowrap; }
+  .chip::before { content: "«"; color: var(--faint); } .chip::after { content: "»"; color: var(--faint); }
+  .playing { flex: 0 1 40vh; }
+  .playing .title { font-size: 3vh; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical; overflow: hidden; }
+  .playing .bar { height: .8vh; border-radius: .4vh; background: var(--line); overflow: hidden; }
+  .playing .bar i { display: block; height: 100%; background: var(--listening); }
+  .playing .meta { color: var(--muted); font-size: 2.6vh; font-variant-numeric: tabular-nums; }
+
+  /* problems: one banner, human words, what to do ------------------------- */
+  .alert { position: fixed; left: 50%; top: 3vh; transform: translateX(-50%); max-width: 80vw;
+           display: flex; gap: 2.4vh; align-items: center; padding: 2vh 3vh; border-radius: 2.6vh;
+           background: #3a1518; border: .3vh solid var(--error); font-size: 3.2vh; z-index: 5;
+           box-shadow: 0 2vh 6vh rgba(0,0,0,.6); }
+  .alert[hidden] { display: none; }
+  .alert .ico { font-size: 5vh; line-height: 1; }
+  .alert b { display: block; font-size: 3.6vh; }
+  .alert span { color: #ffd9d9; }
+  .alert.warn { background: #33270e; border-color: var(--warn); }
+  .alert.warn span { color: #ffe9bd; }
+
+  /* ringing: takes over the whole screen ---------------------------------- */
+  .ring-screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+                 align-items: center; justify-content: center; gap: 3vh; text-align: center;
+                 background: radial-gradient(circle, #4a2a06, #120a02 70%); }
+  .ring-screen[hidden] { display: none; }
+  .ring-screen .big { font-size: 16vh; font-weight: 700; line-height: 1; color: var(--warn);
+                      animation: blink 1s ease-in-out infinite; }
+  .ring-screen .what { font-size: 6vh; font-weight: 600; }
+  .ring-screen .how { font-size: 4vh; color: #ffe9bd; }
+  .ring-screen .how b { color: #fff; }
+  .ring-screen button { display: none; }
+  body.phone .ring-screen button { display: block; }
+
+  /* ambient: nothing happens for a while — just the clock, dimmed, slowly drifting */
+  body.ambient .talk, body.ambient .hints { opacity: .0; transition: opacity 2s; }
+  body.ambient .orbcol { opacity: .55; transition: opacity 2s; }
+
+  /* phone opened the TV page directly: link to the remote */
+  .toremote { display: none; }
+  body.phone .toremote { display: block; position: fixed; right: 16px; bottom: 16px; z-index: 20;
+          font: 600 18px/1 system-ui; padding: 16px 22px; border-radius: 14px; background: #2b3a4d;
+          color: #fff; text-decoration: none; }
+  .stopbtn { font-size: 3.4vh; font-weight: 600; font-family: inherit; padding: 2vh 5vh; border: 0; border-radius: 2vh; background: var(--warn); color: #1a1205; }
 </style>
 </head>
-<body>
-<div class="left">
-  <div id="orb" class="orb"></div>
-  <div id="phase" class="phase">…</div>
-  <button id="talk">Говорить</button>
-  <div id="wake" class="hint"></div>
-  <div id="timings" class="timings"></div>
-</div>
-<div class="right">
-  <div id="micoff" class="mic-off" hidden>Микрофон ничего не слышит: проверь кнопку на нём (красный огонёк) или переподключи USB.</div>
-  <div id="board" class="board"></div>
-  <div id="log" class="log"></div>
-</div>
-<script>
-const PHASES = { idle: "Жду имени", listening: "Слушаю", thinking: "Думаю",
-                 speaking: "Говорю", error: "Ошибка", loading: "Загружаю модели" };
-const orb = document.getElementById("orb"), phase = document.getElementById("phase");
-const log = document.getElementById("log"), timings = document.getElementById("timings");
-const wake = document.getElementById("wake");
-document.getElementById("talk").onclick = () => fetch("talk", { method: "POST" });
-function render(s) {
-  document.getElementById("micoff").hidden = s.mic !== "silent";
-  orb.className = "orb " + s.phase;
-  phase.textContent = PHASES[s.phase] || s.phase;
-  wake.textContent = s.wake_word ? `Скажите «${s.wake_word}» или нажмите кнопку` : "";
-  const t = s.timings || {};
-  const parts = [];
-  if (t.stt_s != null) parts.push(`распознавание ${t.stt_s.toFixed(2)} с`);
-  if (t.first_s != null) parts.push(`первая фраза ${t.first_s.toFixed(2)} с`);
-  timings.textContent = parts.join(" · ");
-  log.replaceChildren(...s.log.map(m => {
-    const d = document.createElement("div");
-    d.className = "msg " + m.who; d.textContent = m.text; return d;
-  }));
-  log.scrollTop = log.scrollHeight;
-}
-function connect() {
-  const es = new EventSource("events");
-  let last = "";
-  es.onmessage = e => {
-    const s = JSON.parse(e.data);
-    render(s);
-    // Разговор кончился — могли поставить таймер или что-то запомнить.
-    if (s.phase !== last && s.phase === "idle") loadBoard();
-    last = s.phase;
-  };
-  es.onerror = () => { es.close(); setTimeout(connect, 2000); };
-}
-connect();
+<body data-phase="loading">
+<div class="app">
+  <div class="top">
+    <div class="clock" id="clock">--:--</div>
+    <div class="date" id="date"></div>
+    <div class="spacer"></div>
+    <div class="weather" id="weather" hidden></div>
+  </div>
 
-// Табло: погода, таймеры и будильники с обратным отсчётом, что Баюн помнит.
-const board = document.getElementById("board");
-let dash = null, skew = 0;
-const signed = t => `${t > 0 ? "+" : ""}${t}°`;
+  <div class="orbcol">
+    <div class="orbwrap"><div class="ring"></div><div class="ring r2"></div><div class="orb" id="orb"></div></div>
+    <div class="phase" id="phase">Загружаюсь</div>
+    <div class="sub" id="sub"></div>
+  </div>
+
+  <div class="talk" id="talk"></div>
+
+  <div class="bottom">
+    <div class="card timers" id="timers" hidden></div>
+    <div class="card playing" id="playing" hidden></div>
+    <div class="card hints"><h3>Можно сказать</h3><div class="chips" id="chips"></div></div>
+  </div>
+</div>
+
+<div class="alert" id="alert" hidden><div class="ico" id="alertIco">!</div><div><b id="alertTitle"></b><span id="alertText"></span></div></div>
+
+<div class="ring-screen" id="ringing" hidden>
+  <div class="big" id="ringBig">00:00</div>
+  <div class="what" id="ringWhat">Будильник</div>
+  <div class="how">Скажите <b>«стоп»</b> — имя не нужно</div>
+  <button class="stopbtn" id="ringStop">Выключить</button>
+</div>
+
+<a class="toremote" href="remote">Открыть пульт</a>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PHASES = { idle: "Жду", listening: "Слушаю", thinking: "Думаю", speaking: "Говорю",
+                 error: "Не получилось", loading: "Загружаюсь" };
+const COLORS = { idle: "--idle", listening: "--listening", thinking: "--thinking", speaking: "--speaking",
+                 error: "--error", loading: "--idle" };
+const AMBIENT_AFTER_S = 180;   // idle that long: hide the conversation, keep clock/timers
+const HISTORY = 7;             // messages on screen
+
+if (matchMedia("(pointer: coarse)").matches) document.body.classList.add("phone");
+
+let S = { phase: "loading", log: [], timings: {} }, dash = null, skew = 0, tv = null, health = null;
+let connected = false, lastActivity = Date.now(), lastPhase = "";
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text != null) e.textContent = text; return e; };
+const pad = n => String(n).padStart(2, "0");
+const signed = t => `${t > 0 ? "+" : t < 0 ? "−" : ""}${Math.abs(t)}°`;
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 function left(sec) {
   sec = Math.max(0, Math.round(sec));
   const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
-  const mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
-  return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
-function clock(ts) {
-  return new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+const hm = ts => new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+function ago(ts) {
+  const s = Date.now() / 1000 - skew - ts;
+  if (s < 60) return "только что";
+  if (s < 3600) return `${Math.floor(s / 60)} мин назад`;
+  return hm(ts);
 }
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
+const wake = () => cap(S.wake_word || "Волтэр");
+
+// ---- voice loop state ------------------------------------------------------
+function renderPhase() {
+  const p = connected ? S.phase : "error";
+  document.body.dataset.phase = p;
+  document.documentElement.style.setProperty("--c", `var(${COLORS[p] || "--idle"})`);
+  $("phase").textContent = connected ? (PHASES[p] || p) : "Нет связи";
+  const sub = $("sub");
+  sub.replaceChildren();
+  if (!connected) sub.append("Голосовая часть не отвечает. Обычно перезапускается сама за минуту.");
+  else if (p === "idle") sub.append("Скажите ", el("b", "", `«${wake()}»`), " и команду одной фразой");
+  else if (p === "listening") sub.append("Говорите. Закончу, когда замолчите");
+  else if (p === "thinking") sub.append("Секунду…");
+  else if (p === "speaking") sub.append("Перебить: ", el("b", "", `«${wake()}, стоп»`));
+  else if (p === "loading") sub.append("Загружаю модели, около минуты");
+  else if (p === "error") sub.append("Попробуйте ещё раз");
 }
-function remove(path) {
-  fetch("brain/api/" + path, { method: "DELETE" }).then(loadBoard);
-}
-function drawBoard() {
-  if (!dash) return;
-  const now = Date.now() / 1000 - skew, cards = [];
-  const w = dash.weather;
-  if (w) {
-    const c = el("div", "card");
-    c.append(el("h3", "", "Погода"), el("div", "big", signed(w.temp)),
-             el("div", "", `${w.sky}, днём ${signed(w.high)}` + (w.rain >= 50 ? ", осадки" : "")),
-             el("div", "hint", `Завтра ${signed(w.tomorrow_high)}, ${w.tomorrow_sky}`));
-    cards.push(c);
+
+function renderTalk() {
+  const box = $("talk"), log = (S.log || []).slice(-HISTORY);
+  if (!log.length) {
+    const e = el("div", "empty");
+    e.append(el("h2", "", "Привет! Я Баюн."), el("div", "", `Позовите «${wake()}» — я слушаю всю комнату.`));
+    box.replaceChildren(e);
+    return;
   }
-  if (dash.reminders.length) {
-    const c = el("div", "card");
-    c.append(el("h3", "", "Поставлено"));
-    for (const r of dash.reminders) {
-      const row = el("div", "item" + (r.ringing ? " ringing" : ""));
-      const text = r.text.charAt(0).toUpperCase() + r.text.slice(1);
-      const label = r.kind === "alarm" ? "Будильник"
-                  : r.kind === "timer" ? (r.text ? `Таймер «${r.text}»` : "Таймер") : text;
-      const due = r.due_at - now;
-      const time = r.ringing ? "звенит" : due > 6 * 3600 ? clock(r.due_at) : left(due);
-      const x = el("button", "x", "✕");
-      x.onclick = () => remove("reminders/" + r.id);
-      row.append(el("span", "what", label), el("span", "left-time", time), x);
-      c.append(row);
+  box.replaceChildren(...log.map((m, i) => {
+    const d = el("div", "msg " + m.who);
+    if (m.who !== "system") {
+      const who = el("span", "who", m.who === "user" ? "Вы" : "Баюн");
+      if (m.ts) who.append(el("span", "when", ago(m.ts)));
+      d.append(who);
     }
-    cards.push(c);
+    d.append(m.text);
+    if (i < log.length - 3) d.classList.add("old");
+    if (i === log.length - 1 && m.who !== "system") d.classList.add("last");
+    return d;
+  }));
+}
+
+// ---- problems: the most important one wins --------------------------------
+function problem() {
+  if (!connected) return null;  // shown in the orb column, not twice
+  if (S.mic === "silent") return { ico: "🎤", title: "Микрофон молчит",
+    text: "Нажмите кнопку на микрофоне (красный огонёк) или переподключите USB." };
+  if (dash === false) return { ico: "⚠", warn: true, title: "Мозг Баюна не отвечает",
+    text: "Голос работает, но ответить не смогу. Перезапустится сам." };
+  if (health && health.llm === "down") return { ico: "☁", warn: true, title: "Нет связи с облаком",
+    text: "Простые команды — свет, таймеры, пауза — работают. Сложные вопросы пока нет." };
+  if (S.phase === "error") return { ico: "!", title: "Не получилось ответить", text: "Попробуйте ещё раз." };
+  return null;
+}
+function renderAlert() {
+  const p = problem(), a = $("alert");
+  a.hidden = !p;
+  if (!p) return;
+  a.classList.toggle("warn", !!p.warn);
+  $("alertIco").textContent = p.ico; $("alertTitle").textContent = p.title; $("alertText").textContent = p.text;
+}
+
+// ---- dashboard: weather, timers, ringing ---------------------------------
+function renderWeather() {
+  const w = dash && dash.weather, box = $("weather");
+  box.hidden = !w;
+  if (!w) return;
+  const d = el("div", "d");
+  d.append(el("b", "", cap(w.sky)), `днём ${signed(w.high)}` + (w.rain >= 50 ? ", осадки" : ""));
+  d.append(el("br"), `завтра ${signed(w.tomorrow_high)}, ${w.tomorrow_sky}`);
+  box.replaceChildren(el("div", "t", signed(w.temp)), d);
+}
+const started = {};  // first time we saw a timer: lets us draw its progress bar
+function renderTimers() {
+  const now = Date.now() / 1000 - skew, box = $("timers");
+  const list = dash && dash.reminders ? dash.reminders : [];
+  box.hidden = !list.length;
+  const ringing = list.filter(r => r.ringing);
+  const rs = $("ringing");
+  rs.hidden = !ringing.length;
+  if (ringing.length) {
+    const r = ringing[0];
+    $("ringBig").textContent = hm(r.due_at);
+    $("ringWhat").textContent = r.kind === "alarm" ? "Будильник" : cap(r.text) || "Таймер";
+    $("ringStop").onclick = () => fetch("brain/api/reminders/" + r.id, { method: "DELETE" }).then(loadBoard);
   }
-  if (dash.facts.length) {
-    const c = el("div", "card");
-    c.append(el("h3", "", "Помню"));
-    for (const f of dash.facts.slice(-6)) {
-      const row = el("div", "item"), x = el("button", "x", "✕");
-      x.onclick = () => remove("facts/" + f.id);
-      row.append(el("span", "what", f.text), x);
-      c.append(row);
+  if (!list.length) return;
+  const h3 = el("h3", "", "Поставлено");
+  const items = list.slice(0, 3).map(r => {
+    const due = r.due_at - now;
+    started[r.id] = started[r.id] || Math.min(now, r.due_at);
+    const t = el("div", "timer" + (due < 60 && !r.ringing ? " soon" : ""));
+    const label = r.kind === "alarm" ? "Будильник" : r.kind === "timer" ? (r.text ? cap(r.text) : "Таймер") : cap(r.text);
+    t.append(el("div", "what", label), el("div", "left", r.ringing ? "звенит" : due > 6 * 3600 ? hm(r.due_at) : left(due)));
+    if (r.kind === "timer" && due > 0) {
+      const total = r.due_at - started[r.id], bar = el("div", "bar"), fill = el("i");
+      fill.style.width = `${total > 0 ? Math.max(2, 100 * (1 - due / total)) : 0}%`;
+      bar.append(fill); t.append(bar);
     }
-    cards.push(c);
-  }
-  board.replaceChildren(...cards);
+    return t;
+  });
+  const wrap = el("div", ""); wrap.style.cssText = "display:flex;gap:3vh";
+  wrap.append(...items);
+  if (list.length > 3) wrap.append(el("div", "what", `ещё ${list.length - 3}`));
+  const col = el("div", ""); col.style.cssText = "display:flex;flex-direction:column;gap:1.2vh";
+  col.append(h3, wrap);
+  box.replaceChildren(col);
+}
+function renderPlaying() {
+  const p = tv && tv.player, box = $("playing");
+  const show = !!(p && p.duration && isFinite(p.duration) && p.duration > 60);
+  box.hidden = !show;
+  if (!show) return;
+  const bar = el("div", "bar"), fill = el("i");
+  fill.style.width = `${100 * p.currentTime / p.duration}%`; bar.append(fill);
+  box.replaceChildren(el("h3", "", p.playing ? "Идёт" : "На паузе"),
+    el("div", "title", (p.title || "").replace(/\s*[|–-]\s*(YouTube|VK Видео|ВКонтакте).*$/i, "")),
+    bar, el("div", "meta", `${left(p.currentTime)} из ${left(p.duration)}`));
+}
+
+// ---- hints: what can be said right now --------------------------------------
+const HINTS = {
+  base: ["Поставь таймер на 10 минут", "Разбуди в 7 утра", "Какая погода завтра", "Включи свет",
+         "Найди мультик Зверополис", "Запомни, что…", "Что ты помнишь", "Сколько времени"],
+  video: ["Продолжи", "Перемотай на минуту вперёд", "Тише", "Следующее видео", "Пауза"],
+  timers: ["Отмени таймер", "Сколько осталось"],
+};
+let hintShift = 0;
+function renderHints() {
+  let pool = [];
+  if (tv && tv.player && tv.player.duration > 60) pool.push(...HINTS.video);
+  if (dash && dash.reminders && dash.reminders.length) pool.push(...HINTS.timers);
+  const base = HINTS.base.slice(hintShift % HINTS.base.length).concat(HINTS.base.slice(0, hintShift % HINTS.base.length));
+  pool = [...new Set([...pool, ...base])].slice(0, 6);
+  $("chips").replaceChildren(...pool.map(t => el("span", "chip", t)));
+}
+
+// ---- clock + ambient -----------------------------------------------------
+function tick() {
+  const d = new Date();
+  $("clock").textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const date = $("date"); date.replaceChildren(
+    el("b", "", d.toLocaleDateString("ru-RU", { weekday: "long" })),
+    d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" }));
+  const idle = S.phase === "idle" && connected && !problem();
+  document.body.classList.toggle("ambient", idle && Date.now() - lastActivity > AMBIENT_AFTER_S * 1000);
+  renderTimers();
+  renderPlaying();
+}
+
+function renderAll() { renderPhase(); renderTalk(); renderAlert(); renderWeather(); renderTimers(); renderHints(); renderPlaying(); }
+
+// ---- data sources ----------------------------------------------------------
+function onState(s) {
+  S = s;
+  if (s.phase !== "idle") lastActivity = Date.now();
+  document.documentElement.style.setProperty("--lvl", s.level || 0);
+  if (s.phase !== lastPhase && s.phase === "idle") { loadBoard(); loadTv(); }
+  if (s.phase !== lastPhase) lastActivity = Date.now();
+  lastPhase = s.phase;
+  renderPhase(); renderTalk(); renderAlert();
+}
+function connect() {
+  const es = new EventSource("events");
+  es.onopen = () => { connected = true; renderAll(); };
+  es.onmessage = e => { connected = true; onState(JSON.parse(e.data)); };
+  es.onerror = () => { es.close(); connected = false; renderAll(); setTimeout(connect, 2000); };
 }
 function loadBoard() {
-  fetch("brain/api/dashboard").then(r => r.ok ? r.json() : null).then(d => {
-    if (d) { dash = d; skew = Date.now() / 1000 - d.now; }
-    drawBoard();
-  }).catch(() => {});
+  fetch("brain/api/dashboard").then(r => r.ok ? r.json() : Promise.reject())
+    .then(d => { dash = d; skew = Date.now() / 1000 - d.now; })
+    .catch(() => { if (connected) dash = false; })
+    .finally(() => { renderWeather(); renderTimers(); renderHints(); renderAlert(); });
+  // optional, only when status.py proxies them; a 404 just means "unknown"
+  fetch("brain/health").then(r => r.ok ? r.json() : null).then(h => { health = h; renderAlert(); }).catch(() => {});
 }
-loadBoard();
-setInterval(loadBoard, 10000);
-setInterval(drawBoard, 1000);
+function loadTv() {
+  fetch("tv/status").then(r => r.ok ? r.json() : null).then(t => { tv = t; renderPlaying(); renderHints(); }).catch(() => {});
+}
+
+// Test hook: ?demo=<json url> or window.__bayunDemo(state, dash, tv) for screenshots.
+window.__bayunDemo = (s, d, t, h) => { connected = s !== null; if (s) S = s; dash = d; tv = t; health = h || null;
+  if (d) skew = Date.now() / 1000 - d.now; lastActivity = Date.now(); renderAll(); };
+
+if (!new URLSearchParams(location.search).has("demo")) {
+  connect(); loadBoard(); loadTv();
+  setInterval(loadBoard, 10000);
+  setInterval(loadTv, 5000);
+}
+setInterval(tick, 1000);
+setInterval(() => { hintShift++; renderHints(); }, 12000);
+setInterval(renderTalk, 30000);   // "2 мин назад"
+tick(); renderAll();
 </script>
 </body>
 </html>

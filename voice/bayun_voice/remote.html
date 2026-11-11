@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0d12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Баюн">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Баюн — пульт</title>
+<style>
+  /* Phone remote for Bayun. Touch only: every control is a real button >= 48px, no hover states. */
+  :root { --bg: #0b0d12; --panel: #151a23; --panel2: #1e2430; --line: #2a3140; --fg: #f2f0ea; --muted: #98a0ad;
+          --listening: #46b8ff; --thinking: #c58cff; --speaking: #3fdc9a; --error: #ff6b6b; --warn: #ffc24a;
+          --c: #5d6472; --safe-b: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 500 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100vh;
+         padding: env(safe-area-inset-top, 0) 16px calc(88px + var(--safe-b)); overscroll-behavior: none; }
+  button, input { font: inherit; color: inherit; }
+  button { border: 0; background: var(--panel2); border-radius: 16px; min-height: 52px; padding: 0 16px;
+           cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  button:active, button.on { background: #2e3a4f; transform: scale(.97); }
+  button:disabled { opacity: .4; }
+  h2 { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+       margin: 22px 4px 10px; }
+
+  /* state header */
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 0 10px;
+           display: flex; align-items: center; gap: 12px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c); flex: none;
+         box-shadow: 0 0 12px var(--c); }
+  body[data-phase="listening"] .dot, body[data-phase="thinking"] .dot { animation: blink .8s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .state { font-size: 20px; font-weight: 650; }
+  .state small { display: block; font-size: 14px; color: var(--muted); font-weight: 500; }
+  .grow { flex: 1; }
+
+  .banner { border-radius: 16px; padding: 14px 16px; margin: 4px 0 8px; background: #3a1518; border: 1px solid var(--error); }
+  .banner.warn { background: #33270e; border-color: var(--warn); }
+  .banner b { display: block; }
+  .banner[hidden] { display: none; }
+
+  /* speak */
+  .speak { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .mic { min-height: 120px; border-radius: 26px; font-size: 22px; font-weight: 650;
+         background: linear-gradient(160deg, #1e3a5a, #16263a); display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 4px; }
+  .mic small { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .mic.rec { background: linear-gradient(160deg, #5a1e2a, #3a1620); }
+  body[data-phase="listening"] .mic:not(.rec) { background: linear-gradient(160deg, #1d4e7a, #173a5c); }
+  .say { display: flex; gap: 8px; }
+  .say input { flex: 1; min-width: 0; min-height: 56px; border-radius: 16px; border: 1px solid var(--line);
+               background: var(--panel); padding: 0 16px; font-size: 18px; outline: none; }
+  .say input:focus { border-color: var(--listening); }
+  .say button { min-width: 64px; background: #2a4a6e; font-weight: 650; }
+  .note { color: var(--muted); font-size: 14px; margin: 2px 4px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button { min-height: 44px; border-radius: 99px; padding: 0 16px; font-size: 15px; background: var(--panel); border: 1px solid var(--line); }
+
+  /* conversation */
+  .log { display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 16px; background: var(--panel); }
+  .msg.user { align-self: flex-end; background: #1b2636; }
+  .msg.bayun { align-self: flex-start; background: #15291f; }
+  .msg.system { align-self: center; background: none; color: var(--muted); font-size: 14px; padding: 2px; }
+  .msg time { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* video */
+  .grid { display: grid; gap: 10px; }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .grid button { min-height: 64px; font-size: 20px; }
+  .grid button small { display: block; font-size: 12px; color: var(--muted); }
+  .playpause { font-size: 28px !important; background: #2a4a6e !important; }
+  .np { background: var(--panel); border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .np .t { font-weight: 650; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .np .meta { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; }
+  .seek { width: 100%; height: 36px; accent-color: var(--listening); }
+  .search { display: flex; gap: 8px; }
+  .search input { flex: 1; min-width: 0; min-height: 56px; border-radius: 16px; border: 1px solid var(--line);
+                  background: var(--panel); padding: 0 16px; font-size: 18px; outline: none; }
+  .seg { display: flex; background: var(--panel); border-radius: 14px; padding: 4px; gap: 4px; margin-bottom: 8px; }
+  .seg button { flex: 1; min-height: 44px; background: none; }
+  .seg button.on { background: var(--panel2); transform: none; }
+  .results { display: flex; flex-direction: column; gap: 8px; }
+  .res { display: flex; gap: 12px; align-items: center; text-align: left; padding: 12px 14px; min-height: 72px; background: var(--panel); }
+  .res .n { flex: none; width: 36px; height: 36px; border-radius: 18px; background: #ffd84a; color: #121212;
+            font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .res .t { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .res .m { color: var(--muted); font-size: 13px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 320px; margin: 0 auto; }
+  .dpad button { min-height: 72px; font-size: 24px; }
+  .dpad .ok { background: #2a4a6e; font-size: 18px; font-weight: 650; }
+
+  /* home: timers, memory */
+  .row { display: flex; align-items: center; gap: 12px; background: var(--panel); border-radius: 16px; padding: 10px 10px 10px 16px; }
+  .row + .row { margin-top: 8px; }
+  .row .what { flex: 1; min-width: 0; }
+  .row .what small { display: block; color: var(--muted); font-size: 13px; }
+  .row .big { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--warn); }
+  .row.ringing { border: 1px solid var(--warn); }
+  .row button { min-width: 52px; font-size: 18px; }
+  .empty { color: var(--muted); padding: 6px 4px; }
+  .wx { display: flex; gap: 16px; align-items: center; background: var(--panel); border-radius: 18px; padding: 14px 16px; }
+  .wx .t { font-size: 40px; font-weight: 650; line-height: 1; }
+
+  /* bottom tab bar */
+  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(3, 1fr);
+        background: rgba(15,18,25,.96); border-top: 1px solid var(--line); padding: 6px 8px calc(6px + var(--safe-b));
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  nav button { background: none; min-height: 60px; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 2px; font-size: 13px; color: var(--muted); }
+  nav button .i { font-size: 22px; }
+  nav button.on { color: var(--fg); background: var(--panel); transform: none; }
+  section[hidden] { display: none; }
+
+  .toast { position: fixed; left: 16px; right: 16px; bottom: calc(96px + var(--safe-b)); z-index: 20;
+           background: #2b3446; border-radius: 14px; padding: 14px 16px; text-align: center;
+           opacity: 0; transform: translateY(10px); transition: .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+  .toast.bad { background: #5a1e2a; }
+
+  @media (min-width: 700px) { body { max-width: 560px; margin: 0 auto; } nav { max-width: 560px; margin: 0 auto; } }
+</style>
+</head>
+<body data-phase="loading">
+
+<header>
+  <div class="dot"></div>
+  <div class="state grow" id="state">Подключаюсь…<small></small></div>
+</header>
+<div class="banner" id="banner" hidden></div>
+
+<!-- ======================= Говорить ======================= -->
+<section id="tab-talk">
+  <div class="speak">
+    <button class="mic" id="talk"><span id="talkLabel">Говорить</span><small id="talkSub">слушает микрофон у телевизора</small></button>
+    <button class="mic" id="phoneMic" hidden><span>Держите и говорите</span><small>в микрофон телефона</small></button>
+  </div>
+  <h2>Или напишите</h2>
+  <form class="say" id="sayForm" autocomplete="off">
+    <input id="sayText" enterkeyhint="send" placeholder="Например: таймер на 10 минут">
+    <button type="submit" aria-label="Отправить">➤</button>
+  </form>
+  <div class="note">Кнопка микрофона на клавиатуре телефона тоже работает — продиктуйте.</div>
+  <h2>Быстро</h2>
+  <div class="chips" id="quick"></div>
+  <h2>Разговор</h2>
+  <div class="log" id="log"></div>
+</section>
+
+<!-- ======================= Видео ======================= -->
+<section id="tab-video" hidden>
+  <div class="np" id="np"><div class="t" id="npTitle">Ничего не идёт</div>
+    <input class="seek" id="seek" type="range" min="0" max="1000" value="0" disabled>
+    <div class="meta"><span id="npCur">0:00</span><span id="npDur">0:00</span></div></div>
+  <h2>Плеер</h2>
+  <div class="grid g3">
+    <button data-player="seek" data-value="-30">−30<small>секунд</small></button>
+    <button class="playpause" data-player="toggle" id="pp">⏯</button>
+    <button data-player="seek" data-value="30">+30<small>секунд</small></button>
+    <button data-player="seek" data-value="-600">−10<small>минут</small></button>
+    <button data-tv="fullscreen">⛶<small>на весь экран</small></button>
+    <button data-player="seek" data-value="600">+10<small>минут</small></button>
+  </div>
+  <h2>Громкость телевизора</h2>
+  <div class="grid g3">
+    <button data-vol="down">−</button>
+    <button data-vol="mute">🔇<small>без звука</small></button>
+    <button data-vol="up">+</button>
+  </div>
+  <h2>Найти</h2>
+  <div class="seg" id="src"><button data-src="vk" class="on">VK Видео</button><button data-src="youtube">YouTube</button></div>
+  <form class="search" id="searchForm" autocomplete="off">
+    <input id="q" type="search" enterkeyhint="search" placeholder="Фильм, мультик, канал">
+    <button type="submit">Найти</button>
+  </form>
+  <div class="results" id="results" style="margin-top:10px"></div>
+  <h2>Экран</h2>
+  <div class="dpad">
+    <button data-key="back" aria-label="Назад">↩</button><button data-key="up">▲</button><button data-tv="home" aria-label="Домой">⌂</button>
+    <button data-key="left">◀</button><button class="ok" data-key="enter">OK</button><button data-key="right">▶</button>
+    <button data-key="escape">Esc</button><button data-key="down">▼</button><button data-key="space">␣</button>
+  </div>
+  <div class="note" style="text-align:center;margin-top:8px">⌂ — экран Баюна. Стрелки и OK — по странице в браузере телевизора.</div>
+</section>
+
+<!-- ======================= Дом ======================= -->
+<section id="tab-home" hidden>
+  <div class="wx" id="wx" hidden></div>
+  <h2>Таймеры и будильники</h2>
+  <div id="timers"></div>
+  <h2>Баюн помнит</h2>
+  <div id="facts"></div>
+  <h2>Телевизор</h2>
+  <div class="grid g3">
+    <button data-power="1">Включить</button>
+    <button data-tv="input">HDMI<small>на ноутбук</small></button>
+    <button data-power="0">Выключить</button>
+  </div>
+</section>
+
+<nav>
+  <button data-tab="talk" class="on"><span class="i">🎙</span>Говорить</button>
+  <button data-tab="video"><span class="i">▶</span>Видео</button>
+  <button data-tab="home"><span class="i">⏱</span>Дом</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text != null) e.textContent = text; return e; };
+const pad = n => String(n).padStart(2, "0");
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+const signed = t => `${t > 0 ? "+" : t < 0 ? "−" : ""}${Math.abs(t)}°`;
+function dur(sec) { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; }
+const hm = ts => new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+const PHASES = { idle: ["Жду", "скажите имя или нажмите «Говорить»"], listening: ["Слушаю", "говорите"],
+  thinking: ["Думаю", "секунду"], speaking: ["Говорю", ""], error: ["Не получилось", "попробуйте ещё раз"],
+  loading: ["Загружаюсь", "около минуты"] };
+const COLORS = { idle: "#5d6472", listening: "#46b8ff", thinking: "#c58cff", speaking: "#3fdc9a", error: "#ff6b6b", loading: "#5d6472" };
+const QUICK = ["Пауза", "Продолжи", "Включи свет", "Выключи свет", "Таймер на 10 минут", "Какая погода", "Что ты помнишь"];
+
+let S = { phase: "loading", log: [] }, dash = null, skew = 0, tv = null, connected = false;
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+function toast(text, bad) { const t = $("toast"); t.textContent = text; t.classList.toggle("bad", !!bad); t.classList.add("on");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2200); }
+if (navigator.vibrate) document.addEventListener("click", e => { if (e.target.closest("button")) navigator.vibrate(10); });
+
+async function call(method, path, body) {
+  if (DEMO) { toast("демо: " + path); return {}; }
+  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {},
+                                body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `ошибка ${r.status}`);
+  return data;
+}
+const tvCall = (path, body) => call("POST", "tv/" + path, body || {})
+  .catch(e => { toast(humanTv(e.message), true); throw e; });
+function humanTv(msg) {
+  if (/no video/.test(msg)) return "На экране нет видео";
+  if (/disabled|503/.test(msg)) return "Телевизор не подключён";
+  if (/502|unavailable/.test(msg)) return "Телевизор (tv-agent) не отвечает";
+  return msg;
+}
+
+// ---- tabs -----------------------------------------------------------------
+function tab(name) {
+  for (const b of document.querySelectorAll("nav button")) b.classList.toggle("on", b.dataset.tab === name);
+  for (const s of document.querySelectorAll("section")) s.hidden = s.id !== "tab-" + name;
+  try { localStorage.setItem("bayun.tab", name); } catch (_) {}
+  if (name === "video") loadTv();
+  if (name === "home") loadBoard();
+  scrollTo(0, 0);
+}
+for (const b of document.querySelectorAll("nav button")) b.onclick = () => tab(b.dataset.tab);
+
+// ---- state -------------------------------------------------------------------
+function renderState() {
+  const p = connected ? S.phase : "offline";
+  document.body.dataset.phase = p;
+  document.documentElement.style.setProperty("--c", COLORS[p] || "#ff6b6b");
+  const [title, sub] = connected ? (PHASES[p] || [p, ""]) : ["Нет связи с Баюном", "переподключаюсь…"];
+  $("state").replaceChildren(title, el("small", "", sub));
+  const busy = ["listening", "thinking", "speaking"].includes(p);
+  $("talkLabel").textContent = p === "listening" ? "Слушаю…" : p === "speaking" ? "Перебить" : "Говорить";
+  $("talk").disabled = !connected || p === "loading" || p === "thinking";
+  const b = $("banner");
+  let msg = null;
+  if (S.mic === "silent") msg = ["Микрофон у телевизора молчит", "Нажмите кнопку на нём (красный огонёк) или переподключите USB. Пока можно писать отсюда.", false];
+  else if (dash === false) msg = ["Мозг Баюна не отвечает", "Перезапустится сам. Видео и громкость работают.", true];
+  b.hidden = !msg;
+  if (msg) { b.classList.toggle("warn", msg[2]); b.replaceChildren(el("b", "", msg[0]), msg[1]); }
+}
+function renderLog() {
+  const log = (S.log || []).slice(-12).reverse();   // newest on top: no scrolling to see the answer
+  $("log").replaceChildren(...(log.length ? log.map(m => {
+    const d = el("div", "msg " + m.who, m.text);
+    if (m.ts && m.who !== "system") d.append(el("time", "", hm(m.ts)));
+    return d;
+  }) : [el("div", "empty", "Пока тихо.")]));
+}
+$("quick").replaceChildren(...QUICK.map(t => { const b = el("button", "", t); b.onclick = () => say(t); return b; }));
+
+// ---- talk ----------------------------------------------------------------------
+$("talk").onclick = () => call("POST", "talk").then(() => toast("Слушаю у телевизора — говорите")).catch(e => toast(e.message, true));
+async function say(text) {
+  text = text.trim(); if (!text) return;
+  try { await call("POST", "say", { text }); toast("Отправил: " + text); }
+  catch (e) { toast(/404/.test(e.message) ? "Этот Баюн пока не принимает текст" : e.message, true); }
+}
+$("sayForm").onsubmit = e => { e.preventDefault(); const i = $("sayText"); say(i.value); i.value = ""; i.blur(); };
+
+// Phone microphone: browsers allow it only on https (or localhost). Hold to talk, release to send
+// 16 kHz mono s16le PCM to POST /utter. Hidden on plain http.
+if (window.isSecureContext && navigator.mediaDevices && window.AudioContext) {
+  const btn = $("phoneMic"); btn.hidden = false;
+  let ctx, src, node, chunks = [], stream;
+  const start = async e => {
+    e.preventDefault(); if (ctx) return;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch (_) { toast("Нет доступа к микрофону телефона", true); return; }
+    ctx = new AudioContext(); src = ctx.createMediaStreamSource(stream);
+    node = ctx.createScriptProcessor(4096, 1, 1); chunks = [];
+    node.onaudioprocess = ev => chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+    src.connect(node); node.connect(ctx.destination); btn.classList.add("rec");
+  };
+  const stop = async () => {
+    if (!ctx) return;
+    btn.classList.remove("rec"); node.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop());
+    const rate = ctx.sampleRate; await ctx.close(); ctx = null;
+    const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
+    for (const c of chunks) { all.set(c, o); o += c.length; }
+    const step = rate / 16000, out = new Int16Array(Math.floor(all.length / step));
+    for (let i = 0; i < out.length; i++) out[i] = Math.max(-1, Math.min(1, all[Math.floor(i * step)])) * 32767;
+    if (out.length < 16000 * 0.4) { toast("Слишком коротко — держите кнопку, пока говорите"); return; }
+    fetch("utter", { method: "POST", headers: { "Content-Type": "audio/L16; rate=16000" }, body: out.buffer })
+      .then(r => toast(r.ok ? "Отправил голос" : "Голос с телефона пока не принимается", !r.ok));
+  };
+  btn.addEventListener("pointerdown", start); btn.addEventListener("pointerup", stop);
+  btn.addEventListener("pointercancel", stop); btn.addEventListener("pointerleave", stop);
+}
+
+// ---- video -------------------------------------------------------------------
+for (const b of document.querySelectorAll("[data-player]"))
+  b.onclick = () => tvCall("player", { action: b.dataset.player, value: b.dataset.value ? +b.dataset.value : undefined }).then(() => setTimeout(loadTv, 300));
+for (const b of document.querySelectorAll("[data-vol]")) b.onclick = () => tvCall("tv/volume", { dir: b.dataset.vol, steps: 2 });
+for (const b of document.querySelectorAll("[data-key]"))
+  b.onclick = () => b.dataset.key === "back" ? tvCall("screen/back") : tvCall("screen/key", { key: b.dataset.key });
+for (const b of document.querySelectorAll("[data-tv]")) b.onclick = () => tvCall(b.dataset.tv).then(() => toast("Готово"));
+for (const b of document.querySelectorAll("[data-power]")) b.onclick = () => tvCall("tv/power", { on: b.dataset.power === "1" });
+let source = "vk";
+for (const b of document.querySelectorAll("#src button")) b.onclick = () => {
+  source = b.dataset.src; for (const x of document.querySelectorAll("#src button")) x.classList.toggle("on", x === b); };
+$("searchForm").onsubmit = async e => {
+  e.preventDefault(); const q = $("q").value.trim(); if (!q) return; $("q").blur();
+  $("results").replaceChildren(el("div", "empty", "Ищу на телевизоре…"));
+  try { renderResults((await tvCall(source + "/search", { q })).results || []); }
+  catch (_) { $("results").replaceChildren(el("div", "empty", "Не получилось найти")); }
+};
+function renderResults(list) {
+  $("results").replaceChildren(...(list.length ? list.map(r => {
+    const b = el("button", "res"), n = el("span", "n", r.n), body = el("span", "");
+    body.append(el("span", "t", r.title), el("span", "m", [r.duration, r.channel].filter(Boolean).join(" · ")));
+    b.append(n, body);
+    b.onclick = () => tvCall(source + "/play", { n: r.n }).then(() => { toast("Включаю: " + r.title); setTimeout(loadTv, 2500); });
+    return b;
+  }) : [el("div", "empty", "Ничего не нашлось")]));
+}
+let seeking = false;
+$("seek").oninput = () => { seeking = true; const p = tv && tv.player; if (p) $("npCur").textContent = dur(p.duration * $("seek").value / 1000); };
+$("seek").onchange = () => { const p = tv && tv.player; seeking = false;
+  if (p) tvCall("player", { action: "seek", value: p.duration * $("seek").value / 1000 - p.currentTime }).then(() => setTimeout(loadTv, 300)); };
+function renderTv() {
+  const p = tv && tv.player, ok = !!(p && isFinite(p.duration) && p.duration > 0);
+  $("npTitle").textContent = ok ? (p.title || "Видео").replace(/\s*[|–-]\s*(YouTube|VK Видео).*$/i, "") : (tv && tv.page && tv.page.title) || "Ничего не идёт";
+  $("seek").disabled = !ok;
+  if (ok && !seeking) { $("seek").value = Math.round(1000 * p.currentTime / p.duration); $("npCur").textContent = dur(p.currentTime); }
+  $("npDur").textContent = ok ? dur(p.duration) : "";
+  $("pp").textContent = ok && p.playing ? "⏸" : "▶";
+}
+
+// ---- home ---------------------------------------------------------------------
+function renderBoard() {
+  const now = Date.now() / 1000 - skew, w = dash && dash.weather;
+  $("wx").hidden = !w;
+  if (w) { const d = el("div", ""); d.append(el("b", "", cap(w.sky)), el("br"), `днём ${signed(w.high)}, завтра ${signed(w.tomorrow_high)} — ${w.tomorrow_sky}`);
+           $("wx").replaceChildren(el("div", "t", signed(w.temp)), d); }
+  const rem = dash && dash.reminders || [];
+  $("timers").replaceChildren(...(rem.length ? rem.map(r => {
+    const row = el("div", "row" + (r.ringing ? " ringing" : "")), what = el("div", "what");
+    const label = r.kind === "alarm" ? "Будильник" : r.kind === "timer" ? (r.text ? `Таймер «${r.text}»` : "Таймер") : cap(r.text);
+    what.append(label, el("small", "", r.kind === "alarm" || r.due_at - now > 6 * 3600 ? "на " + hm(r.due_at) : "до " + hm(r.due_at)));
+    const big = el("div", "big", r.ringing ? "звенит" : r.due_at - now > 6 * 3600 ? hm(r.due_at) : dur(r.due_at - now));
+    const x = el("button", "", "✕"); x.setAttribute("aria-label", "Отменить");
+    x.onclick = () => call("DELETE", "brain/api/reminders/" + r.id).then(loadBoard).then(() => toast("Отменил"));
+    row.append(what, big, x); return row;
+  }) : [el("div", "empty", "Ничего не поставлено. Скажите «таймер на 10 минут».")]));
+  const facts = dash && dash.facts || [];
+  $("facts").replaceChildren(...(facts.length ? facts.map(f => {
+    const row = el("div", "row"), x = el("button", "", "✕"); x.setAttribute("aria-label", "Забыть");
+    x.onclick = () => { if (confirm("Забыть: «" + f.text + "»?")) call("DELETE", "brain/api/facts/" + f.id).then(loadBoard); };
+    row.append(el("div", "what", cap(f.text)), x); return row;
+  }) : [el("div", "empty", "Пока ничего. Скажите «запомни, что…».")]));
+}
+
+// ---- data ----------------------------------------------------------------------
+function loadBoard() {
+  if (DEMO) return;
+  fetch("brain/api/dashboard").then(r => r.ok ? r.json() : Promise.reject())
+    .then(d => { dash = d; skew = Date.now() / 1000 - d.now; }).catch(() => { dash = false; })
+    .finally(() => { renderBoard(); renderState(); });
+}
+function loadTv() { if (DEMO) return; fetch("tv/status").then(r => r.ok ? r.json() : null).then(t => { tv = t; renderTv(); }).catch(() => {}); }
+function connect() {
+  const es = new EventSource("events");
+  let last = "";
+  es.onopen = () => { connected = true; renderState(); };
+  es.onmessage = e => { connected = true; S = JSON.parse(e.data); renderState(); renderLog();
+    if (S.phase !== last && S.phase === "idle") { loadBoard(); loadTv(); } last = S.phase; };
+  es.onerror = () => { es.close(); connected = false; renderState(); setTimeout(connect, 2000); };
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { loadBoard(); loadTv(); } });
+
+window.__bayunDemo = (s, d, t, results) => { connected = true; S = s; dash = d; tv = t; if (d) skew = Date.now() / 1000 - d.now;
+  renderState(); renderLog(); renderBoard(); renderTv(); if (results) renderResults(results); };
+if (!DEMO) { connect(); loadBoard(); loadTv(); setInterval(loadBoard, 15000);
+             setInterval(() => { if (!document.hidden && !$("tab-video").hidden) loadTv(); }, 2000); }
+setInterval(renderBoard, 1000);
+let saved = "talk"; try { saved = localStorage.getItem("bayun.tab") || "talk"; } catch (_) {}
+tab(["talk", "video", "home"].includes(saved) ? saved : "talk");
+renderState(); renderLog(); renderBoard(); renderTv();
+</script>
+</body>
+</html>
