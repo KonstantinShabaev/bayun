@@ -322,6 +322,38 @@ def create_app(
         outage.ok()
         conversations.remember(conversation_id, request.text, " ".join(said))
 
+    @app.get("/api/dashboard")
+    async def dashboard() -> dict[str, Any]:
+        """Для экрана Баюна: что поставлено, что запомнено, погода."""
+        reminders = memory.pending() if memory is not None else []
+        facts = memory.facts() if memory is not None else []
+        return {
+            "now": time.time(),
+            "reminders": [
+                {
+                    "id": r.id,
+                    "kind": r.kind,
+                    "text": r.text,
+                    "due_at": r.due_at,
+                    "ringing": memory is not None and r.kind == "alarm" and r.id in ringing(),
+                }
+                for r in reminders
+            ],
+            "facts": [{"id": f.id, "text": f.text} for f in facts],
+            "weather": await weather.summary() if weather is not None else None,
+        }
+
+    def ringing() -> set[int]:
+        return memory.ringing_ids() if memory is not None else set()
+
+    @app.delete("/api/reminders/{reminder_id}")
+    async def delete_reminder(reminder_id: int) -> dict[str, int]:
+        return {"deleted": memory.cancel(reminder_id) if memory is not None else 0}
+
+    @app.delete("/api/facts/{fact_id}")
+    async def delete_fact(fact_id: int) -> dict[str, int]:
+        return {"deleted": int(memory.forget(fact_id)) if memory is not None else 0}
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         state = {"status": "ok", "version": __version__}

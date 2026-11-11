@@ -6,6 +6,7 @@
 
 import logging
 import re
+import time
 from typing import Any
 
 import httpx
@@ -119,6 +120,17 @@ class Weather:
             "forecast_days": 2,
         }
         self._client = httpx.AsyncClient(timeout=4, transport=transport)
+        self._cached: tuple[float, dict[str, Any]] | None = None
+
+    async def data(self, max_age_s: float = 600) -> dict[str, Any]:
+        """Прогноз Open-Meteo; свежий в пределах max_age_s берётся из памяти."""
+        now = time.monotonic()
+        if self._cached is not None and now - self._cached[0] < max_age_s:
+            return self._cached[1]
+        response = await self._client.get(URL, params=self._params)
+        response.raise_for_status()
+        self._cached = (now, response.json())
+        return self._cached[1]
 
     async def answer(self, text: str) -> str | None:
         """Ответ про погоду или None (не про погоду, или сервис не ответил — пусть LLM)."""
@@ -126,9 +138,27 @@ class Weather:
         if what is None:
             return None
         try:
-            response = await self._client.get(URL, params=self._params)
-            response.raise_for_status()
-            return speech(what, response.json())
+            # На вопрос вслух — данные не старше пяти минут.
+            return speech(what, await self.data(max_age_s=300))
         except Exception as error:
             _LOGGER.warning("Open-Meteo не ответил: %s", error)
             return None
+
+    async def summary(self) -> dict[str, Any] | None:
+        """Коротко для экрана: сейчас, днём, ночью, небо, осадки."""
+        try:
+            data = await self.data()
+        except Exception as error:
+            _LOGGER.warning("Open-Meteo не ответил: %s", error)
+            return None
+        current, daily = data.get("current", {}), data.get("daily", {})
+        return {
+            "temp": round(current.get("temperature_2m", 0)),
+            "feels": round(current.get("apparent_temperature", 0)),
+            "sky": _sky(current.get("weather_code")),
+            "high": round(daily["temperature_2m_max"][0]),
+            "low": round(daily["temperature_2m_min"][0]),
+            "rain": int(daily.get("precipitation_probability_max", [0])[0] or 0),
+            "tomorrow_high": round(daily["temperature_2m_max"][1]),
+            "tomorrow_sky": _sky(daily["weather_code"][1]),
+        }

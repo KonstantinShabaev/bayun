@@ -235,6 +235,12 @@ class Memory:
         ).fetchone()
         return int(row[0])
 
+    def ringing_ids(self) -> set[int]:
+        rows = self._db.execute(
+            "SELECT id FROM reminders WHERE done = 0 AND kind = 'alarm' AND rings > 0"
+        ).fetchall()
+        return {int(row[0]) for row in rows}
+
     def stop_alarms(self, ringing_only: bool = False) -> int:
         """Выключает звенящие будильники или (ringing_only=False) все поставленные."""
         cursor = self._db.execute(

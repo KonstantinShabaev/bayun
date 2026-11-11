@@ -281,3 +281,21 @@ def test_migrates_first_reminders_table(tmp_path) -> None:
     memory = Memory(db, clock=Clock())
     assert [r.text for r in memory.pending()] == ["полить цветы"]
     memory.set_reminder("", in_seconds=60, kind="alarm")
+
+
+def test_dashboard_api(tmp_path) -> None:
+    from bayun_brain.api import create_app
+    from fastapi.testclient import TestClient
+
+    memory = Memory(tmp_path / "bayun.db")
+    memory.set_reminder("полить цветы", in_seconds=600)
+    memory.remember("ключи в синей коробке")
+    client = TestClient(create_app(memory=memory))
+    board = client.get("/api/dashboard").json()
+    assert [r["text"] for r in board["reminders"]] == ["полить цветы"]
+    assert board["facts"] == [{"id": 1, "text": "ключи в синей коробке"}]
+    assert board["weather"] is None
+    rid = board["reminders"][0]["id"]
+    assert client.delete(f"/api/reminders/{rid}").json() == {"deleted": 1}
+    assert client.delete("/api/facts/1").json() == {"deleted": 1}
+    assert client.get("/api/dashboard").json()["reminders"] == []

@@ -2,12 +2,16 @@
 
 Стандартная библиотека, без фреймворка: GET / — страница, GET /events — SSE,
 GET /api/state — текущее состояние одним JSON,
-POST /talk — кнопка «Говорить» вместо имени.
+POST /talk — кнопка «Говорить» вместо имени,
+GET и DELETE /brain/api/… — к brain (таймеры, память, погода для экрана): brain слушает
+только 127.0.0.1, а экран открывают и с телефона.
 """
 
 import json
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from typing import Any
@@ -54,15 +58,41 @@ class Status:
             return self._version, json.dumps(self.state, ensure_ascii=False)
 
 
-def serve(status: Status, host: str, port: int) -> ThreadingHTTPServer:
+def serve(
+    status: Status, host: str, port: int, brain_url: str = "http://127.0.0.1:8765"
+) -> ThreadingHTTPServer:
     page = resources.files(__package__).joinpath("status.html").read_bytes()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:
             pass
 
+        def _brain(self, method: str) -> None:
+            request = urllib.request.Request(
+                brain_url.rstrip("/") + self.path[len("/brain") :], method=method
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    body, code = response.read(), response.status
+            except urllib.error.HTTPError as error:
+                body, code = error.read(), error.code
+            except OSError:
+                body, code = b'{"error": "brain unavailable"}', 502
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_DELETE(self) -> None:
+            if self.path.startswith("/brain/api/"):
+                self._brain("DELETE")
+            else:
+                self.send_error(404)
+
         def do_GET(self) -> None:
-            if self.path == "/":
+            if self.path.startswith("/brain/api/"):
+                self._brain("GET")
+            elif self.path == "/":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()

@@ -350,7 +350,7 @@ def run() -> None:
     )
     config = load_config(args.config)
     status = Status()
-    serve(status, config.status.host, config.status.port)
+    serve(status, config.status.host, config.status.port, config.brain.url)
     _LOGGER.info("Страница состояния: http://%s:%d", config.status.host, config.status.port)
     VoiceLoop(config, status).run()
 

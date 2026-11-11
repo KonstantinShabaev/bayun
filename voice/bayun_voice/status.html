@@ -30,6 +30,22 @@
   .bayun { align-self: flex-start; background: #1f3328; }
   .system { align-self: center; color: var(--muted); font-size: 18px; }
   .timings { color: var(--muted); font-size: 16px; text-align: center; min-height: 1.4em; }
+  .right { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+  .board { display: flex; flex-wrap: wrap; gap: 16px; }
+  .board:empty { display: none; }
+  .card { background: #1a1f26; border-radius: 18px; padding: 16px 20px; min-width: 220px;
+          flex: 1 1 220px; display: flex; flex-direction: column; gap: 10px; }
+  .card .hint { text-align: left; }
+  .card h3 { margin: 0; font-size: 17px; font-weight: 500; color: var(--muted);
+             text-transform: uppercase; letter-spacing: .06em; }
+  .big { font-size: 46px; line-height: 1; }
+  .item { display: flex; align-items: center; gap: 12px; }
+  .item .what { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .item .left-time { font-variant-numeric: tabular-nums; color: var(--thinking); }
+  .item.ringing .left-time { color: var(--error); animation: pulse .8s infinite; }
+  .x { font-size: 22px; padding: 6px 16px; border-radius: 12px; background: #2a2f38; }
+  .x:active { background: var(--error); }
+  .right .log { flex: 1; min-height: 0; }
   @media (max-width: 800px) { body { grid-template-columns: 1fr; height: auto; }
                               .orb { width: 140px; height: 140px; } }
 </style>
@@ -42,7 +58,10 @@
   <div id="wake" class="hint"></div>
   <div id="timings" class="timings"></div>
 </div>
-<div id="log" class="log"></div>
+<div class="right">
+  <div id="board" class="board"></div>
+  <div id="log" class="log"></div>
+</div>
 <script>
 const PHASES = { idle: "Жду имени", listening: "Слушаю", thinking: "Думаю",
                  speaking: "Говорю", error: "Ошибка", loading: "Загружаю модели" };
@@ -67,10 +86,90 @@ function render(s) {
 }
 function connect() {
   const es = new EventSource("events");
-  es.onmessage = e => render(JSON.parse(e.data));
+  let last = "";
+  es.onmessage = e => {
+    const s = JSON.parse(e.data);
+    render(s);
+    // Разговор кончился — могли поставить таймер или что-то запомнить.
+    if (s.phase !== last && s.phase === "idle") loadBoard();
+    last = s.phase;
+  };
   es.onerror = () => { es.close(); setTimeout(connect, 2000); };
 }
 connect();
+
+// Табло: погода, таймеры и будильники с обратным отсчётом, что Баюн помнит.
+const board = document.getElementById("board");
+let dash = null, skew = 0;
+const signed = t => `${t > 0 ? "+" : ""}${t}°`;
+function left(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+function clock(ts) {
+  return new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function remove(path) {
+  fetch("brain/api/" + path, { method: "DELETE" }).then(loadBoard);
+}
+function drawBoard() {
+  if (!dash) return;
+  const now = Date.now() / 1000 - skew, cards = [];
+  const w = dash.weather;
+  if (w) {
+    const c = el("div", "card");
+    c.append(el("h3", "", "Погода"), el("div", "big", signed(w.temp)),
+             el("div", "", `${w.sky}, днём ${signed(w.high)}` + (w.rain >= 50 ? ", осадки" : "")),
+             el("div", "hint", `Завтра ${signed(w.tomorrow_high)}, ${w.tomorrow_sky}`));
+    cards.push(c);
+  }
+  if (dash.reminders.length) {
+    const c = el("div", "card");
+    c.append(el("h3", "", "Поставлено"));
+    for (const r of dash.reminders) {
+      const row = el("div", "item" + (r.ringing ? " ringing" : ""));
+      const text = r.text.charAt(0).toUpperCase() + r.text.slice(1);
+      const label = r.kind === "alarm" ? "Будильник"
+                  : r.kind === "timer" ? (r.text ? `Таймер «${r.text}»` : "Таймер") : text;
+      const due = r.due_at - now;
+      const time = r.ringing ? "звенит" : due > 6 * 3600 ? clock(r.due_at) : left(due);
+      const x = el("button", "x", "✕");
+      x.onclick = () => remove("reminders/" + r.id);
+      row.append(el("span", "what", label), el("span", "left-time", time), x);
+      c.append(row);
+    }
+    cards.push(c);
+  }
+  if (dash.facts.length) {
+    const c = el("div", "card");
+    c.append(el("h3", "", "Помню"));
+    for (const f of dash.facts.slice(-6)) {
+      const row = el("div", "item"), x = el("button", "x", "✕");
+      x.onclick = () => remove("facts/" + f.id);
+      row.append(el("span", "what", f.text), x);
+      c.append(row);
+    }
+    cards.push(c);
+  }
+  board.replaceChildren(...cards);
+}
+function loadBoard() {
+  fetch("brain/api/dashboard").then(r => r.ok ? r.json() : null).then(d => {
+    if (d) { dash = d; skew = Date.now() / 1000 - d.now; }
+    drawBoard();
+  }).catch(() => {});
+}
+loadBoard();
+setInterval(loadBoard, 10000);
+setInterval(drawBoard, 1000);
 </script>
 </body>
 </html>
