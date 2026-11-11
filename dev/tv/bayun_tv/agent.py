@@ -34,6 +34,8 @@ KIOSK_ARGS = [
     "--enable-features=VaapiVideoDecodeLinuxGL", "--ozone-platform=wayland",
     "--no-first-run", "--noerrdialogs", "--disable-session-crashed-bubble",
     "--autoplay-policy=no-user-gesture-required",
+    # No "translate this page?" bubble over the Russian screen.
+    "--lang=ru", "--disable-features=Translate",
 ]
 
 PAGE_SCRIPTS = "\n".join(open(os.path.join(HERE, name), encoding="utf-8").read()
