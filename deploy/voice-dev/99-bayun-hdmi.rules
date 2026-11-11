@@ -1,0 +1,2 @@
+# /etc/udev/rules.d/99-bayun-hdmi.rules — hotplug HDMI (ТВ проснулся/переподключили кабель)
+ACTION=="change", SUBSYSTEM=="drm", KERNEL=="card0", ENV{HOTPLUG}=="1", RUN+="/usr/bin/systemctl --no-block --user -M walter@ start bayun-display-guard.service"

@@ -1,0 +1,28 @@
+#!/bin/sh
+# ~/bayun/bin/bayun-display-guard — держит HDMI-A-1 в 1920x1080@60.
+# Запускается udev'ом при hotplug HDMI (сон/пробуждение ТВ) и таймером раз в 2 мин.
+# Если KWin выбрал другой режим (4096x2160 → «нет сигнала») — возвращает 1080p.
+OUT=HDMI-A-1
+WANT="${BAYUN_HDMI_MODE:-1920x1080@60}"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || exit 0       # нет сессии Plasma
+[ "$(cat /sys/class/drm/card0-$OUT/status 2>/dev/null)" = connected ] || exit 0
+sleep "${1:-3}"                                            # дать KWin применить свой конфиг
+state=$(kscreen-doctor -j 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for o in d["outputs"]:
+    if o["name"] == sys.argv[1]:
+        cur = [m["name"] for m in o["modes"] if m["id"] == o.get("currentModeId")]
+        print("on" if o["enabled"] else "off", cur[0] if cur else "-")
+' "$OUT") || exit 0
+set -- $state
+if [ "$1" = off ]; then
+  logger -t bayun-display-guard "$OUT выключен, включаю $WANT"
+  kscreen-doctor "output.$OUT.enable" "output.$OUT.mode.$WANT" "output.$OUT.priority.1" >/dev/null 2>&1
+elif [ "$2" != "$WANT" ]; then
+  logger -t bayun-display-guard "$OUT в режиме $2, возвращаю $WANT"
+  kscreen-doctor "output.$OUT.mode.$WANT" >/dev/null 2>&1
+fi

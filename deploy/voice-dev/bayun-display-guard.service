@@ -1,0 +1,8 @@
+# ~/.config/systemd/user/bayun-display-guard.service
+[Unit]
+Description=Баюн: HDMI на ТВ всегда 1920x1080@60
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/bayun/bin/bayun-display-guard

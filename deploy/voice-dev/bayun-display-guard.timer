@@ -1,0 +1,10 @@
+# ~/.config/systemd/user/bayun-display-guard.timer — страховка, если udev-событие потерялось
+[Unit]
+Description=Баюн: проверка режима HDMI раз в 2 минуты
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+# --- ~/.config/systemd/user/bayun-brain.service.d/override.conf
+# uvicorn на SIGTERM выходит с 143 → systemd пишет «Failed», сторож/журнал шумят.
+[Service]
+SuccessExitStatus=143
+
+# --- ~/.config/systemd/user/bayun-voice.service.d/override.conf
+[Service]
+SuccessExitStatus=143 1
+# лимит на случай утечки (сейчас пик 2.8G): systemd перезапустит, а не OOM всей машины
+MemoryHigh=3G
+MemoryMax=4G
+
+# --- ~/.config/systemd/user/bayun-lights.service.d/override.conf
+# На загрузке virbr0 (192.168.122.1) ещё нет → bind падает (Errno 99). Ждём адрес.
+[Service]
+ExecStartPre=/bin/sh -c 'for i in $(seq 60); do ip -4 -o addr show virbr0 | grep -q 192.168.122.1 && exit 0; sleep 1; done; exit 1'
+Restart=always
+RestartSec=5
+[Unit]
+StartLimitIntervalSec=0
+
+# --- /etc/systemd/system/sing-box.service.d/restart.conf
+# Restart=on-failure не поднимет sing-box после чистого выхода; vpnsplit BindsTo= ляжет вместе с ним.
+[Service]
+Restart=always
