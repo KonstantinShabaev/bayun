@@ -28,6 +28,8 @@ class WakeConfig(BaseModel):
     pattern: str = ""
     # Ниже — чувствительнее к тихой речи издалека, но чаще распознаёт шум.
     vad_threshold: float = 0.3
+    # Сколько кадров по 80 мс до начала речи добавлять к куску: VAD опаздывает.
+    preroll_frames: int = 4
 
 
 class ListenConfig(BaseModel):
@@ -35,6 +37,8 @@ class ListenConfig(BaseModel):
     silence_s: float = 0.8
     max_s: float = 12.0
     follow_up_s: float = 5.0
+    # Порог Silero VAD для записи команды. 0,5 обрезает тихие хвосты издалека.
+    vad_threshold: float = 0.3
     # Тихий сигнал «слушаю» после имени. По умолчанию выключен: раздражает,
     # а что Баюн слушает, видно на странице состояния.
     beep: bool = False

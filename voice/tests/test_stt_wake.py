@@ -73,3 +73,53 @@ def test_similar_words_are_not_the_name(text: str) -> None:
     from bayun_voice.wake import name_match
 
     assert name_match(text) is None
+
+
+@pytest.mark.parametrize(
+    "heard",
+    ["Молты, включи свет.", "Волт, на паузу.", "олты, включи свет.", "Волдер. Какая погода?",
+     "Полтер, какая погода?", "Колтер, включи фильм."],
+)  # fmt: skip
+def test_far_field_fragments_wake(heard: str) -> None:
+    from bayun_voice.wake import name_match
+
+    assert name_match(heard) is not None
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Волны, шум.", "Молоты, включи", "На Волге, говорят", "Волге, привет", "Мол, не знаю.",
+     "Поттер, часть два", "Полтора часа.", "Ольга, привет", "Вольты, амперы", "Молт пиво"],
+)  # fmt: skip
+def test_fragments_need_vocative_first_word(text: str) -> None:
+    from bayun_voice.wake import name_match
+
+    assert name_match(text) is None
+
+
+def test_repeated_name_is_not_a_command() -> None:
+    from bayun_voice.wake import strip_names
+
+    assert strip_names("Волтер.") == ""
+    assert strip_names("Волтер, Волтер, включи свет") == "включи свет"
+    assert strip_names("включи свет") == "включи свет"
+
+
+def test_preroll_keeps_speech_start() -> None:
+    vad, asr = FakeVad(), FakeAsr("Волтер")
+    wake = SttWake(asr, vad, preroll_frames=3)
+    vad.speech = False
+    for _ in range(5):
+        wake(np.zeros(1280, dtype=np.int16))
+    captured: list[int] = []
+    asr.transcribe = lambda pcm, rate: captured.append(len(pcm) // 2) or "Волтер"  # type: ignore[method-assign]
+    assert say(wake, vad) == 1.0
+    assert captured[0] == (3 + 10 + 5) * 1280
+
+
+def test_click_does_not_block_gain() -> None:
+    from bayun_voice.wake import normalize
+
+    audio = (np.sin(np.arange(16000) / 5) * 200).astype(np.int16)
+    audio[100] = 30000  # стук по столу
+    assert np.abs(normalize(audio)).mean() > 1500

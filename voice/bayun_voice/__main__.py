@@ -7,11 +7,11 @@
 import argparse
 import itertools
 import logging
+import os
 import queue
 import re
 import signal
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -25,13 +25,14 @@ from .config import Config, load_config
 from .listen import Endpointer, SpeechDetector, Verdict, load_vad
 from .status import Status, serve
 from .tts import load_tts, strip_audio_tags
-from .wake import OpenWakeWord, SttWake
+from .wake import Frontend, OpenWakeWord, SttWake, name_match, normalize, strip_names
 
 _LOGGER = logging.getLogger("bayun_voice")
 
 NEAR_MISS = 0.15
 # Микрофон отдаёт ровно ноль дольше этого — выключен кнопкой или завис.
-MIC_SILENT_S = 20.0
+# Живой fifine даже в тишине даёт −60 dBFS, ровного нуля не бывает: 5 с хватает.
+MIC_SILENT_S = 5.0
 
 STOP_WORDS = re.compile(r"\b(стоп|хватит|замолчи|помолчи|подожди|тихо|джарв\w*)\b")
 
@@ -51,7 +52,7 @@ class VoiceLoop:
         self.asr = load_engine(config.stt.engine)
         wake = config.wake
         self.wake: OpenWakeWord | SttWake = (
-            SttWake(self.asr, load_vad(), wake.pattern, wake.vad_threshold)
+            SttWake(self.asr, load_vad(), wake.pattern, wake.vad_threshold, wake.preroll_frames)
             if wake.engine == "stt"
             else OpenWakeWord(wake.model)
         )
@@ -115,7 +116,11 @@ class VoiceLoop:
             if score >= self.config.wake.threshold:
                 _LOGGER.info("Имя услышано (%.2f)", score)
                 return True
-            if score >= NEAR_MISS:
+            if isinstance(self.wake, SttWake) and self.wake.near_miss:
+                # Только само слово, не вся фраза: видно, как GigaAM слышит имя.
+                _LOGGER.info("Почти имя: %r", self.wake.near_miss)
+                self.wake.near_miss = ""
+            elif score >= NEAR_MISS:
                 # Похоже на имя, но не дотянуло: по журналу видно, не занижен ли порог.
                 _LOGGER.info("Почти имя (%.2f)", score)
 
@@ -137,7 +142,10 @@ class VoiceLoop:
 
     def _terminate(self, *_: object) -> None:
         self.ducker.restore()
-        sys.exit(0)
+        self.mic.stop()
+        # sys.exit из обработчика сигнала внутри queue.get роняет процесс с
+        # «release unlocked lock» и кодом 1: systemd пишет FAILURE. Выходим сразу.
+        os._exit(0)
 
     def wake_screen(self) -> None:
         command = self.config.audio.wake_screen_command
@@ -169,6 +177,9 @@ class VoiceLoop:
     def conversation(self, turn: Turn | None = None, listen_first: bool = False) -> None:
         turn = turn or Turn()
         timeout = self.config.listen.start_timeout_s
+        # Сразу после имени в очереди уже начало команды: его не выбрасываем.
+        # После своей речи (объявление, ответ) — выбрасываем эхо.
+        keep_queue = not listen_first
         while True:
             # «Волтэр, включи свет» одной фразой: команда уже распознана вместе с именем.
             text = "" if listen_first else self._said_with_name()
@@ -179,16 +190,26 @@ class VoiceLoop:
             else:
                 if self.config.listen.beep and timeout == self.config.listen.start_timeout_s:
                     self.say_raw(beep(self.tts.rate, volume=0.1))
-                pcm = self.record(timeout)
+                pcm = self.record(timeout, drain=not keep_queue)
+                keep_queue = False
                 if pcm is None:
                     break
-                text = self.transcribe(pcm)
+                heard = self.transcribe(pcm)
+                text = strip_names(heard) if isinstance(self.wake, SttWake) else heard
+                if heard and not text:
+                    # Позвали ещё раз («Волтэр?»), не дождавшись: это не команда.
+                    _LOGGER.info("Только имя, слушаю дальше")
+                    timeout = self.config.listen.start_timeout_s
+                    continue
                 if not text:
                     break
-            if self.reply(text, turn):
-                # Перебили по имени: сразу слушаем новую фразу.
+            barged = self.reply(text, turn)
+            if barged == "name":
+                # Перебили по имени: сразу слушаем новую фразу (команда могла прийти с ним).
                 timeout = self.config.listen.start_timeout_s
                 continue
+            if barged == "stop":
+                break
             if not (turn.continue_conversation and self.config.listen.follow_up_s > 0):
                 break
             timeout = self.config.listen.follow_up_s
@@ -196,14 +217,17 @@ class VoiceLoop:
         self.mic.drain()
         self.status.set(phase="idle", level=0.0)
 
-    def record(self, start_timeout_s: float) -> bytes | None:
-        self.mic.drain()
+    def record(self, start_timeout_s: float, drain: bool = True) -> bytes | None:
+        if drain:
+            self.mic.drain()
         self.vad.reset()
         self.status.set(phase="listening")
         listen = self.config.listen
-        ender = Endpointer(start_timeout_s, listen.silence_s, listen.max_s)
+        ender = Endpointer(start_timeout_s, listen.silence_s, listen.max_s, listen.vad_threshold)
+        frontend = Frontend()
         frames: list[bytes] = []
         for frame in self.mic.stream():
+            frame = frontend(frame)
             frames.append(frame.tobytes())
             self.status.level(frames[-1])
             verdict = ender.push(self.vad(frame))
@@ -217,7 +241,11 @@ class VoiceLoop:
     def transcribe(self, pcm: bytes) -> str:
         self.status.set(phase="thinking", level=0.0)
         started = time.monotonic()
-        text = self.asr.transcribe(pcm, 16000).strip()
+        import numpy as np
+
+        # Издалека команда тихая, как и имя: поднимаем по громкости речи.
+        audio = normalize(np.frombuffer(pcm, dtype=np.int16))
+        text = self.asr.transcribe(audio.tobytes(), 16000).strip()
         stt_s = time.monotonic() - started
         _LOGGER.info("STT %.2f с: %r", stt_s, text)
         self.status.set(timings={"stt_s": stt_s})
@@ -225,8 +253,8 @@ class VoiceLoop:
             self.status.log("user", text)
         return text
 
-    def reply(self, text: str, turn: Turn) -> bool:
-        """Говорит ответ по мере готовности. True — перебили по имени."""
+    def reply(self, text: str, turn: Turn) -> str | None:
+        """Говорит ответ по мере готовности. "name" — перебили по имени, "stop" — стоп-словом."""
         started = time.monotonic()
         sentences: queue.Queue[str | Exception | None] = queue.Queue()
 
@@ -246,15 +274,18 @@ class VoiceLoop:
         self.vad.reset()
         self._barge: list[bytes] = []
         self._barge_silence = 0
+        # Что сам говорит сейчас: эхо из ТВ со словом «подожди» или своим именем
+        # не должно обрывать ответ (эхоподавления нет).
+        self._spoken = ""
         first = True
         filler_played = False
         producing = True
         while not player.finished.is_set():
-            if self.config.reply.barge_in and self.heard_name():
+            if self.config.reply.barge_in and (barged := self.heard_name()):
                 player.abort()
-                _LOGGER.info("Перебили")
+                _LOGGER.info("Перебили (%s)", barged)
                 self.status.log("system", "перебили")
-                return True
+                return barged
             if not producing:
                 player.finished.wait(0.05)
                 continue
@@ -274,6 +305,7 @@ class VoiceLoop:
                 turn.continue_conversation = False
                 self.status.set(phase="error")
                 self.status.log("system", "brain не ответил")
+                self._spoken += " " + TROUBLE_SPEECH.lower()
                 player.add(self.synthesize(TROUBLE_SPEECH))
             else:
                 if first:
@@ -285,8 +317,9 @@ class VoiceLoop:
                         timings={**self.status.state["timings"], "first_s": first_s},
                     )
                 self.status.log("bayun", strip_audio_tags(item))
+                self._spoken += " " + item.lower()
                 player.add(self.synthesize(item))
-        return False
+        return None
 
     def _said_with_name(self) -> str:
         if not isinstance(self.wake, SttWake):
@@ -294,7 +327,18 @@ class VoiceLoop:
         text, self.wake.remainder = self.wake.remainder, ""
         return text
 
-    def heard_name(self) -> bool:
+    def _echo(self, text: str) -> bool:
+        """Кусок — это, похоже, эхо собственного ответа."""
+        spoken = getattr(self, "_spoken", "")
+        if not spoken:
+            return False
+        if (m := STOP_WORDS.search(text.lower())) and m.group() in spoken:
+            return True
+        return name_match(text) is not None and any(
+            name_match(w) for w in re.findall(r"\w+[,.!?]?", spoken)
+        )
+
+    def heard_name(self) -> str | None:
         """Перебили ли: имя по детектору или «стоп/хватит» по короткому STT.
 
         Эхоподавления нет, микрофон слышит и сам ответ из ТВ, поэтому любой речи
@@ -304,21 +348,27 @@ class VoiceLoop:
             try:
                 frame = self.mic.frames.get_nowait()
             except queue.Empty:
-                return False
+                return None
             if isinstance(self.wake, SttWake):
                 # Детектор и так распознаёт каждый кусок: стоп-слово ищем в нём же.
                 self.wake.last_text = ""
-                if self.wake(frame) >= 1.0:
-                    return True
-                if STOP_WORDS.search(self.wake.last_text.lower()):
-                    _LOGGER.info("Стоп-слово: %r", self.wake.last_text)
-                    return True
+                named = self.wake(frame) >= 1.0
+                heard = self.wake.last_text
+                if heard and self._echo(heard):
+                    _LOGGER.info("Своё эхо, не перебиваю: %r", heard)
+                    self.wake.remainder = ""
+                    continue
+                if named:
+                    return "stop" if STOP_WORDS.search(self.wake.remainder.lower()) else "name"
+                if STOP_WORDS.search(heard.lower()):
+                    _LOGGER.info("Стоп-слово: %r", heard)
+                    return "stop"
                 continue
             if self.wake(frame) >= self.config.wake.threshold:
                 self.wake.reset()
-                return True
+                return "name"
             if self._barge_frame(frame):
-                return True
+                return "stop"
 
     def _barge_frame(self, frame: Frame) -> bool:
         speech = self.vad(frame) >= 0.5
