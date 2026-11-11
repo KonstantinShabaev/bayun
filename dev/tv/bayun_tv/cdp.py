@@ -28,9 +28,13 @@ class Connection:
         host, port, path = m.group(1), int(m.group(2)), m.group(3)
         self.sock = socket.create_connection((host, port), timeout)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
-                           f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
-                           f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
+        self.sock.sendall(
+            (
+                f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
+                f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
+                f"Sec-WebSocket-Version: 13\r\n\r\n"
+            ).encode()
+        )
         buf = b""
         while b"\r\n\r\n" not in buf:
             chunk = self.sock.recv(4096)
@@ -67,7 +71,7 @@ class Connection:
                 self._need(10)
                 n, off = struct.unpack(">Q", self._buf[2:10])[0], 10
             self._need(off + n)
-            payload, self._buf = self._buf[off:off + n], self._buf[off + n:]
+            payload, self._buf = self._buf[off : off + n], self._buf[off + n :]
             opcode = b1 & 0x0F
             if opcode == 8:
                 raise ConnectionError("websocket closed by peer")
@@ -137,8 +141,13 @@ class Connection:
         return reply.get("result", {})
 
     def evaluate(self, expression: str, timeout: float = 10, await_promise: bool = False) -> Any:
-        r = self.call("Runtime.evaluate", timeout=timeout, expression=expression,
-                      returnByValue=True, awaitPromise=await_promise)
+        r = self.call(
+            "Runtime.evaluate",
+            timeout=timeout,
+            expression=expression,
+            returnByValue=True,
+            awaitPromise=await_promise,
+        )
         if "exceptionDetails" in r:
             ex = r["exceptionDetails"]
             raise CDPError(ex.get("exception", {}).get("description") or ex.get("text", "JS error"))

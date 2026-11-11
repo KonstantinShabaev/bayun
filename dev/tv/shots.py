@@ -1,7 +1,8 @@
 """Screenshots of the overlay variants over a paused YouTube frame in the headless dev browser.
 
-    python shots.py [variant ...]      (agent on :8791, headless Chromium on :9333)
+python shots.py [variant ...]      (agent on :8791, headless Chromium on :9333)
 """
+
 import base64
 import json
 import os
@@ -32,13 +33,21 @@ TEXT = {
 
 
 def post(path: str, body: dict) -> dict:
-    req = urllib.request.Request(AGENT + path, json.dumps(body).encode(), {"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        AGENT + path, json.dumps(body).encode(), {"Content-Type": "application/json"}
+    )
     return json.load(urllib.request.urlopen(req, timeout=20))
 
 
 def main() -> None:
     c = Connection(list_pages(9333)[0]["webSocketDebuggerUrl"])
-    c.call("Emulation.setDeviceMetricsOverride", width=1920, height=1080, deviceScaleFactor=2, mobile=False)
+    c.call(
+        "Emulation.setDeviceMetricsOverride",
+        width=1920,
+        height=1080,
+        deviceScaleFactor=2,
+        mobile=False,
+    )
     post("/player", {"action": "seek", "value": 40})
     time.sleep(2)
     post("/player", {"action": "pause"})
@@ -53,8 +62,12 @@ def main() -> None:
             post("/overlay", {"phase": phase, "text": text})
             c.evaluate("window.__bayunOverlay.settle(1.5)")
             time.sleep(0.6)
-            img = c.call("Page.captureScreenshot", format="jpeg", quality=85,
-                         clip={"x": 0, "y": 0, "width": 1920, "height": 1080, "scale": 0.5})["data"]
+            img = c.call(
+                "Page.captureScreenshot",
+                format="jpeg",
+                quality=85,
+                clip={"x": 0, "y": 0, "width": 1920, "height": 1080, "scale": 0.5},
+            )["data"]
             path = f"{OUT}/{variant}-{phase}.jpg"
             with open(path, "wb") as f:
                 f.write(base64.b64decode(img))

@@ -52,6 +52,20 @@ TOOLS: list[dict[str, Any]] = [
         {"n": {"type": "integer", "minimum": 1}},
         ["n"],
     ),
+    _tool(
+        "pick_result",
+        "Карточки результатов на экране: next/prev — подсветить следующую или "
+        "предыдущую, confirm — включить подсвеченную, cancel — убрать карточки.",
+        {"action": {"type": "string", "enum": ["next", "prev", "confirm", "cancel"]}},
+        ["action"],
+    ),
+    _tool(
+        "set_quality",
+        "Качество видео YouTube: height 2160 (4К), 1440, 1080, 720, 480; "
+        "0 — авто, 9999 — максимальное.",
+        {"height": {"type": "integer", "enum": [0, 480, 720, 1080, 1440, 2160, 9999]}},
+        ["height"],
+    ),
     _tool("stop_video", "Выключает видео и возвращает на телевизор экран Баюна.", {}, []),
     _tool(
         "control_video",
@@ -100,8 +114,9 @@ NAMES = frozenset(t["function"]["name"] for t in TOOLS)
 
 PROMPT = (
     "\nЕсть телевизор с YouTube и VK Видео. Фильм, сериал, мультфильм или «найди» — "
-    "search_video, чтобы человек выбрал по номеру (потом play_result). Музыка, клип, "
-    "короткое видео — play_video сразу. Плеер — control_video, "
+    "search_video: на экране карточки, человек выбирает номером (play_result) или "
+    "«следующий/этот» (pick_result). Музыка, клип, короткое видео — play_video сразу. "
+    "Качество — set_quality. Плеер — control_video, "
     "громкость ТВ — set_volume, всё остальное на экране — screen. Отвечай коротко."
 )
 
@@ -113,6 +128,46 @@ PLAYER_DONE = {
     "volume": "Громкость ролика изменена.",
     "unmute": "Звук в ролике включён.",
 }
+
+
+QUALITY_NAMES = {
+    0: "авто",
+    480: "480",
+    720: "720",
+    1080: "1080",
+    1440: "1440",
+    2160: "4К",
+    9999: "максимальное",
+}
+_LEVEL_HEIGHT = {"hd2160": "4К", "hd1440": "1440", "hd1080": "1080", "hd720": "720", "large": "480",
+                 "medium": "360", "auto": "авто"}  # fmt: skip
+
+_ORDINAL_SPOKEN = [
+    "",
+    "первый",
+    "второй",
+    "третий",
+    "четвёртый",
+    "пятый",
+    "шестой",
+    "седьмой",
+    "восьмой",
+]
+
+
+def _russian(error: str) -> str:
+    """tv-agent отвечает по-английски; вслух — только по-русски."""
+    if "search first" in error or "no result" in error:
+        return "Сначала найди видео, потом выбирай номер"
+    if "no video" in error or "not possible" in error:
+        return "На экране сейчас нет видео"
+    if "quality" in error:
+        return "Качество тут выбрать нельзя"
+    if "nothing visible" in error or "no element" in error:
+        return "Не нашёл такого на экране"
+    if "not reachable" in error or "Timeout" in error:
+        return "Телевизор не отозвался"
+    return "Телевизор не справился"
 
 
 class AgentError(Exception):
@@ -128,6 +183,8 @@ class Video:
         # из самого фильма, услышанная в продолжении разговора) не перезапускает фильм.
         self._last_play: tuple[str, int, float] | None = None
         self.replay_guard_s = 120.0
+        # На экране карточки результатов: «следующий» листает их, «нажми 3» включает третий.
+        self._choosing = False
 
     async def _post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
@@ -146,9 +203,25 @@ class Video:
         except AgentError as error:
             if name in ("control_video",):
                 return "Видео сейчас не играет."
-            return "Телевизор не отозвался." if "отозвался" in str(error) else f"Не вышло: {error}."
+            return (
+                "Телевизор не отозвался."
+                if "отозвался" in str(error)
+                else f"{_russian(str(error))}."
+            )
 
     async def _run(self, name: str, args: dict[str, Any]) -> str:
+        if self._choosing:
+            # Пока на экране карточки, те же слова значат выбор, а не плеер и не номера кнопок.
+            if name == "control_video" and args.get("action") == "next":
+                name, args = "pick_result", {"action": "next"}
+            elif name == "control_video" and args.get("action") == "play":
+                name, args = "pick_result", {"action": "confirm"}
+            elif name == "screen" and args.get("action") == "click" and args.get("n"):
+                name, args = "play_result", {"n": args["n"]}
+            elif name == "screen" and args.get("action") == "back":
+                name, args = "pick_result", {"action": "cancel"}
+        elif name == "pick_result" and args.get("action") == "confirm":
+            name, args = "control_video", {"action": "play"}
         if name in ("play_video", "search_video"):
             query = str(args.get("query") or "").strip()
             if not query:
@@ -161,20 +234,36 @@ class Video:
                 return f"По запросу «{query}» ничего не нашлось."
             if name == "play_video":
                 await self._post(f"/{source}/play", {"n": results[0]["n"]})
+                self._choosing = False
                 return f"Включаю: {results[0]['title']}."
-            # Номера и так нарисованы на экране: список вслух только мешает.
-            return f"Нашёл {len(results)}, номера на экране. Какой включить?"
+            # Карточки на экране; вслух только первый вариант, чтобы было что подтвердить.
+            self._choosing = True
+            return f"Нашёл {len(results)}. Первый: {results[0]['title']}. Включить или следующий?"
         if name == "play_result":
             n = int(args.get("n") or 1)
             now = time.monotonic()
             last = self._last_play
             if last and last[:2] == (self._last_source, n) and now - last[2] < self.replay_guard_s:
                 return "Уже идёт."
-            await self._post(f"/{self._last_source}/play", {"n": n})
+            data = await self._post(f"/{self._last_source}/play", {"n": n})
             self._last_play = (self._last_source, n, now)
-            return "Включаю."
+            self._choosing = False
+            return f"Включаю: {data['title']}." if data.get("title") else "Включаю."
+        if name == "pick_result":
+            return await self._pick(str(args.get("action")))
+        if name == "set_quality":
+            height = int(args.get("height") or 0)
+            if height not in QUALITY_NAMES:
+                return "Такого качества нет."
+            data = await self._post("/player", {"action": "quality", "value": height})
+            got = _LEVEL_HEIGHT.get(str(data.get("quality")), str(data.get("quality")))
+            want = QUALITY_NAMES[height]
+            if got == want or height in (0, 9999):
+                return f"Качество {got}."
+            return f"{want} нет, поставил {got}."
         if name == "stop_video":
             self._last_play = None
+            self._choosing = False
             await self._post("/home")
             return "Видео выключено."
         if name == "control_video":
@@ -189,6 +278,23 @@ class Video:
         if name == "screen":
             return await self._screen(args)
         return "Нет такого инструмента."
+
+    async def _pick(self, action: str) -> str:
+        if action == "cancel":
+            self._choosing = False
+            await self._post("/results/hide")
+            return "Убрал."
+        if action == "confirm":
+            data = await self._post("/results/confirm")
+            self._choosing = False
+            return f"Включаю: {data['title']}." if data.get("title") else "Включаю."
+        if action not in ("next", "prev"):
+            return "Не понял, какой вариант."
+        data = await self._post("/results/select", {"move": 1 if action == "next" else -1})
+        n = int(data["selected"])
+        spoken = _ORDINAL_SPOKEN[n] if n < len(_ORDINAL_SPOKEN) else f"номер {n}"
+        extra = f", {data['duration']}" if data.get("duration") else ""
+        return f"{spoken.capitalize()}: {data['title']}{extra}."
 
     async def _player(self, args: dict[str, Any]) -> str:
         action = str(args.get("action"))

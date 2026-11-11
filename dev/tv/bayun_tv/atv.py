@@ -31,8 +31,12 @@ class AndroidTV:
             return self._remote
         from androidtvremote2 import AndroidTVRemote
 
-        remote = AndroidTVRemote("Bayun", os.path.join(PAIR_DIR, "cert.pem"),
-                                 os.path.join(PAIR_DIR, "key.pem"), self.host)
+        remote = AndroidTVRemote(
+            "Bayun",
+            os.path.join(PAIR_DIR, "cert.pem"),
+            os.path.join(PAIR_DIR, "key.pem"),
+            self.host,
+        )
         await remote.async_connect()
         remote.keep_reconnecting()
         for _ in range(20):  # current_app arrives right after connect

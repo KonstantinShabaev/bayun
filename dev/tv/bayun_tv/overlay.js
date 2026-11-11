@@ -3,7 +3,7 @@
 // Injected over CDP; no innerHTML anywhere (YouTube enforces Trusted Types).
 (() => {
   if (location.port === '8770') return;
-  const VERSION = 6;
+  const VERSION = 7;
   const old = window.__bayunOverlay;
   if (old && old.version >= VERSION) return;
   if (old && old.destroy) old.destroy();
@@ -51,6 +51,27 @@
     .hint.sel { background:#46c8ff; color:#04121c; }
     .sel-box { position:absolute; border-radius:1vh; box-shadow:0 0 0 .4vh #46c8ff, 0 0 3vh #46c8ff;
       transition:all .2s ease; }
+    /* result cards: big, few, readable from the sofa */
+    .cards { position:absolute; inset:0; display:none; padding:7vh 5vw 14vh; box-sizing:border-box;
+      background:rgba(6,8,12,.95); grid-template-columns:repeat(3, 1fr); grid-auto-rows:1fr; gap:3vh 2.4vw; }
+    .cards.on { display:grid; }
+    .card { position:relative; border-radius:1.8vh; overflow:hidden; background:#151a22;
+      box-shadow:0 0 0 .3vh rgba(255,255,255,.06); transition:transform .18s ease, box-shadow .18s ease;
+      display:flex; flex-direction:column; color:#f6f4ef; font-family:"Inter",system-ui,sans-serif; }
+    .card.sel { transform:scale(1.045); box-shadow:0 0 0 .55vh #46c8ff, 0 0 4vh rgba(70,200,255,.7); }
+    .card img { width:100%; flex:1 1 auto; min-height:0; object-fit:cover; background:#0b0e13; }
+    .card .num { position:absolute; left:1.2vh; top:1.2vh; min-width:5.4vh; height:5.4vh; border-radius:2.7vh;
+      background:#ffd84a; color:#121212; font:800 3.4vh/5.4vh "Inter",system-ui,sans-serif; text-align:center; }
+    .card.sel .num { background:#46c8ff; color:#04121c; }
+    .card .dur { position:absolute; right:1.2vh; top:1.2vh; padding:.3vh 1vh; border-radius:.8vh;
+      background:rgba(0,0,0,.75); font:700 2vh/1.4 "Inter",system-ui,sans-serif; }
+    .card .meta { padding:1.2vh 1.6vh 1.5vh; }
+    .card .title { font:700 2.6vh/1.25 "Inter",system-ui,sans-serif; display:-webkit-box; -webkit-line-clamp:2;
+      -webkit-box-orient:vertical; overflow:hidden; }
+    .card .chan { font:500 1.9vh/1.3 "Inter",system-ui,sans-serif; opacity:.65; margin-top:.4vh;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cards .help { position:absolute; left:0; right:0; bottom:4vh; text-align:center; color:#f6f4ef; opacity:.7;
+      font:600 2.4vh/1.3 "Inter",system-ui,sans-serif; }
   `;
   const canvases = {};
   for (const name of ['aurora', 'orb', 'edge']) {
@@ -65,7 +86,10 @@
   const said = document.createElement('span');
   caption.append(who, said);
   const hintLayer = document.createElement('div');
-  root.append(style, ...Object.values(canvases), caption, hintLayer);
+  const cardLayer = document.createElement('div');
+  cardLayer.className = 'cards';
+  // cards go under the caption and the glow, so "Вы: следующий" stays visible
+  root.append(style, cardLayer, ...Object.values(canvases), caption, hintLayer);
 
   const attach = () => {
     const parent = document.fullscreenElement || document.documentElement;
@@ -261,6 +285,46 @@
     }
   }
 
+  // ---- result cards ------------------------------------------------------
+  // items: [{n, title, channel, duration, thumb}], at most 6 shown; selected: n or null.
+  function cards(items, selected) {
+    while (cardLayer.firstChild) cardLayer.firstChild.remove();
+    cardLayer.classList.toggle('on', !!(items && items.length));
+    if (!items || !items.length) return;
+    const page = Math.floor((Math.max(1, selected || 1) - 1) / 6);
+    for (const it of items.slice(page * 6, page * 6 + 6)) {
+      const c = document.createElement('div');
+      c.className = 'card' + (it.n === selected ? ' sel' : '');
+      const img = document.createElement('img');
+      if (it.thumb) img.src = it.thumb;
+      img.alt = '';
+      const num = document.createElement('div');
+      num.className = 'num';
+      num.textContent = String(it.n);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = it.title || '';
+      const chan = document.createElement('div');
+      chan.className = 'chan';
+      chan.textContent = it.channel || '';
+      meta.append(title, chan);
+      c.append(img, num, meta);
+      if (it.duration) {
+        const dur = document.createElement('div');
+        dur.className = 'dur';
+        dur.textContent = it.duration;
+        c.append(dur);
+      }
+      cardLayer.append(c);
+    }
+    const help = document.createElement('div');
+    help.className = 'help';
+    help.textContent = '«Включи второй» · «Следующий» · «Этот» · «Отмена»';
+    cardLayer.append(help);
+  }
+
   window.__bayunOverlay = {
     version: VERSION,
     set(phase, text) {
@@ -281,6 +345,7 @@
       setCaption(st.phase, said.textContent);
     },
     hints,
+    cards,
     destroy() { cancelAnimationFrame(raf); host.remove(); document.removeEventListener('fullscreenchange', attach); },
     // for screenshots: jump straight to the target look
     settle(seconds) {

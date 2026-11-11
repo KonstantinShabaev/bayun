@@ -71,6 +71,21 @@ _PLAY = re.compile(
 
 _CHOOSE = {"фильм", "кино", "сериал", "мультфильм"}
 
+# Качество: «качество 4к», «поставь 1080», «в 4к», «максимальное качество», «качество авто».
+_QUALITY_WORDS = [
+    (r"4\s*к|4k|четыре\s*к|2160|uhd|ультра\s*hd|ультра\s*эйч\s*ди|4000", 2160),
+    (r"2\s*к|2k|две\s*к|1440", 1440),
+    (r"1080\w*|тысяча\s+восемьдесят\w*|full\s*hd|фулл?\s*(?:hd|эйч\s*ди|хд)|фуллхд", 1080),
+    (r"720\w*|семьсот\s+двадцать\w*|hd|эйч\s*ди|хд", 720),
+    (r"480\w*|четыреста\s+восемьдесят\w*", 480),
+    (r"максимальн\w*|лучш\w*|максимум|высок\w*|наилучш\w*", 9999),
+    (r"авто\w*", 0),
+]
+_QUALITY = re.compile(
+    r"^(?:(?:поставь|сделай|включи|выбери|смотреть|давай)\s+)?(?:в\s+)?(?:(?:качество|разрешение)\s+)?"
+    r"(?:в\s+)?(?P<q>.+?)(?:\s+(?:качество|качестве|разрешение|разрешении))?$"
+)
+
 _FIXED: dict[str, Intent] = {}
 for _words, _intent in [
     (("пауза", "на паузу", "поставь на паузу", "поставь паузу", "стоп", "останови",
@@ -95,6 +110,16 @@ for _words, _intent in [
      Intent("screen", {"action": "scroll", "direction": "up"})),
     (("покажи номера", "номера", "что на экране", "покажи кнопки"),
      Intent("screen", {"action": "list"})),
+    # выбор среди карточек результатов; «следующий» и «играй» Video сам понимает как выбор,
+    # пока карточки на экране
+    (("следующий вариант", "другой вариант", "покажи следующий", "еще вариант", "не этот"),
+     Intent("pick_result", {"action": "next"})),
+    (("предыдущий", "предыдущий вариант", "прошлый", "прошлый вариант", "верни предыдущий"),
+     Intent("pick_result", {"action": "prev"})),
+    (("этот", "вот этот", "включи этот", "этот включи", "включай", "да включай", "да включи",
+      "включи его"), Intent("pick_result", {"action": "confirm"})),
+    (("отмена", "отбой", "ничего не надо", "убери варианты", "закрой варианты"),
+     Intent("pick_result", {"action": "cancel"})),
 ]:  # fmt: skip
     for _w in _words:
         _FIXED[_w] = _intent
@@ -109,6 +134,10 @@ _ORDINALS = {
 _RESULT = re.compile(
     r"^(?:(?:включи|поставь|давай|запусти|выбери)\s+)?(?:номер\s+)?(?P<n>\S+?)"
     r"(?:\s+(?:видео|ролик|вариант|фильм|результат))?$"
+)
+# «второй», «номер три», «вариант 2» без глагола: только номер результата
+_BARE_RESULT = re.compile(
+    r"^(?:номер\s+|вариант\s+)?(?P<n>\S+?)(?:\s+(?:вариант|видео|ролик|номер))?$"
 )
 _CLICK = re.compile(r"^(?:нажми|кликни|открой|выбери)\s+(?:на\s+)?(?:номер\s+)?(?P<n>\d+)$")
 
@@ -137,7 +166,17 @@ def match(text: str) -> Intent | None:
         steps = int(_number(m.group("n"), 3))
         direction = "up" if "громч" in m.group("dir") else "down"
         return Intent("set_volume", {"direction": direction, "steps": steps})
-    if (m := _RESULT.match(phrase)) and (n := _index(m.group("n"))):
+    about_quality = re.search(r"качеств|разрешени", phrase) or re.fullmatch(
+        r"(?:(?:поставь|включи|давай)\s+)?(?:в\s+)?(?:4\s*к|4k|1080|2160|1440)", phrase
+    )
+    if about_quality and (m := _QUALITY.match(phrase)):
+        for pattern, height in _QUALITY_WORDS:
+            if re.fullmatch(pattern, m.group("q")):
+                return Intent("set_quality", {"height": height})
+    # «поставь 1080» — качество (выше), а не результат 1080: результатов не больше 20
+    if (m := _RESULT.match(phrase)) and (n := _index(m.group("n"))) and n <= 20:
+        return Intent("play_result", {"n": n})
+    if (m := _BARE_RESULT.match(phrase)) and (n := _index(m.group("n"))) and n <= 8:
         return Intent("play_result", {"n": n})
     if m := _CLICK.match(phrase):
         return Intent("screen", {"action": "click", "n": int(m.group("n"))})

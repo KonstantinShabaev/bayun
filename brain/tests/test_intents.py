@@ -33,6 +33,17 @@ from bayun_brain.intents import match
         ("Нажми 12", "screen", {"action": "click", "n": 12}),
         ("Листай вниз", "screen", {"action": "scroll", "direction": "down"}),
         ("Вернись", "screen", {"action": "back"}),
+        ("Волтэр, качество 4К", "set_quality", {"height": 2160}),
+        ("Поставь 1080", "set_quality", {"height": 1080}),
+        ("Качество тысяча восемьдесят", "set_quality", {"height": 1080}),
+        ("Максимальное качество", "set_quality", {"height": 9999}),
+        ("Качество авто", "set_quality", {"height": 0}),
+        ("Давай второй", "play_result", {"n": 2}),
+        ("Номер три", "play_result", {"n": 3}),
+        ("Следующий вариант", "pick_result", {"action": "next"}),
+        ("Предыдущий", "pick_result", {"action": "prev"}),
+        ("Вот этот", "pick_result", {"action": "confirm"}),
+        ("Отмена", "pick_result", {"action": "cancel"}),
     ],
 )
 def test_fast_commands(text: str, tool: str, args: dict[str, object]) -> None:
@@ -42,7 +53,13 @@ def test_fast_commands(text: str, tool: str, args: dict[str, object]) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["Какая погода завтра?", "Включи свет на кухне", "Расскажи анекдот", "Сделай громче лампу"],
+    [
+        "Какая погода завтра?",
+        "Включи свет на кухне",
+        "Расскажи анекдот",
+        "Сделай громче лампу",
+        "Какое качество воздуха",
+    ],
 )
 def test_other_phrases_go_to_llm(text: str) -> None:
     assert match(text) is None

@@ -1,7 +1,7 @@
 // Screen helpers for voice control: numbered list of visible clickable elements
 // and YouTube search results. Injected over CDP next to overlay.js.
 (() => {
-  const VERSION = 3;
+  const VERSION = 4;
   if (window.__bayunScreen && window.__bayunScreen.version >= VERSION) return;
 
   const CLICKABLE = 'a[href], button, [role=button], [role=link], [role=tab], [role=menuitem], ' +
@@ -86,7 +86,9 @@
       const href = a && a.href;
       if (!href || !/\/watch\?v=/.test(href)) continue;  // skip shorts, channels, playlists
       const box = (r.querySelector('ytd-thumbnail, yt-thumbnail-view-model') || r).getBoundingClientRect();
+      const id = (href.match(/[?&]v=([\w-]{11})/) || [])[1];
       out.push({
+        thumb: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '',
         n: out.length + 1,
         x: Math.round(box.left), y: Math.round(box.top), w: Math.round(box.width), h: Math.round(box.height),
         title: clean(a.getAttribute('title') || a.textContent),
@@ -148,6 +150,7 @@
       const thumb = (card.querySelector('[data-testid="video_card_thumb"]') || card).getBoundingClientRect();
       out.push({
         n: out.length + 1, title: pick('video_card_title'), channel: pick('video_card_owner'),
+        thumb: ((card.querySelector('[data-testid="video_card_thumb"] img, img') || {}).currentSrc) || '',
         duration: pick('video_card_duration'), url: a.href.replace(/[?#].*$/, ''),
         x: Math.round(thumb.left), y: Math.round(thumb.top), w: Math.round(thumb.width), h: Math.round(thumb.height),
       });

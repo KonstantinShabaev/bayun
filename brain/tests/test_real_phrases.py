@@ -116,7 +116,7 @@ def test_no_follow_up_after_film_starts_and_no_replay() -> None:
     client = TestClient(create_app(Config(), chat, video=fake_tv(posts)))
 
     said, done = stream(client, "включи фильм зверополис")
-    assert said == ["Нашёл 1, номера на экране. Какой включить?"]
+    assert said == ["Нашёл 1. Первый: Зверополис. Включить или следующий?"]
     assert done["continue_conversation"]  # ждём номер
 
     said, done = stream(client, "Давай первый.", done["conversation_id"])

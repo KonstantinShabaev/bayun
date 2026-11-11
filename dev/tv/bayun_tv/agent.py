@@ -26,13 +26,24 @@ HOME_URL = "http://127.0.0.1:8770/"
 TV_CONF = os.path.expanduser("~/.config/bayun/androidtv/tv.conf")
 TV_HOST = "fe80::4044:c4ff:fef6:3ea0%wlp0s20f3"
 # HDMI 2 of the Changhong TV (MediaTek TIS hardware id HW3)
-LAPTOP_INPUT_URI = "content://android.media.tv/passthrough/com.mediatek.tis%2F.HdmiInputService%2FHW3"
+LAPTOP_INPUT_URI = (
+    "content://android.media.tv/passthrough/com.mediatek.tis%2F.HdmiInputService%2FHW3"
+)
 KIOSK_ARGS = [
-    "chromium", "--kiosk", f"--app={HOME_URL}",
+    "chromium",
+    "--kiosk",
+    f"--app={HOME_URL}",
     f"--user-data-dir={os.path.expanduser('~/.config/bayun/tv-chromium')}",
-    "--remote-debugging-port=9222", "--remote-debugging-address=127.0.0.1",
-    "--enable-features=VaapiVideoDecodeLinuxGL", "--ozone-platform=wayland",
-    "--no-first-run", "--noerrdialogs", "--disable-session-crashed-bubble",
+    "--remote-debugging-port=9222",
+    "--remote-debugging-address=127.0.0.1",
+    # Hardware decode of VP9/AV1 on Iris Xe. VaapiVideoDecodeLinuxGL was renamed in Chromium 131;
+    # with the old name SystemInfo.getInfo lists no videoDecoding profiles (software decode).
+    "--enable-features=AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,"
+    "VaapiIgnoreDriverChecks",
+    "--ozone-platform=wayland",
+    "--no-first-run",
+    "--noerrdialogs",
+    "--disable-session-crashed-bubble",
     "--autoplay-policy=no-user-gesture-required",
     # No "translate this page?" bubble over the Russian screen.
     "--lang=ru",
@@ -41,13 +52,21 @@ KIOSK_ARGS = [
     "--disable-features=Translate,DisableLoadExtensionCommandLineSwitch",
 ]
 
-PAGE_SCRIPTS = "\n".join(open(os.path.join(HERE, name), encoding="utf-8").read()
-                         for name in ("overlay.js", "screen.js"))
+PAGE_SCRIPTS = "\n".join(
+    open(os.path.join(HERE, name), encoding="utf-8").read()
+    for name in ("kiosk.js", "overlay.js", "screen.js")
+)
 
 VK_VIDEO = re.compile(r"https?://(?:www\.)?(?:vkvideo\.ru|vk\.com|vk\.ru)/video-?\d+_\d+")
-YOUTUBE_ID = re.compile(r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/)|youtu\.be/)([\w-]{11})")
+YOUTUBE_ID = re.compile(
+    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/)|youtu\.be/)([\w-]{11})"
+)
 
 # Runs inside a YouTube page for its whole life.
+# Ads: only when the player is really playing something else than ?v= (an in-stream ad loads its own
+# video id) or the ad UI is visible. The old "ad-showing and shorter than 3 min" rule fast-forwarded
+# real clips and films whenever uBlock left the class on the player.
+# Quality: bayun-quality in localStorage (0 = auto) is applied once per video with setPlaybackQualityRange.
 YOUTUBE_PAGE_JS = """(() => {
   if (window.__bayunYT) return;
   window.__bayunYT = true;
@@ -55,22 +74,71 @@ YOUTUBE_PAGE_JS = """(() => {
     localStorage.setItem('yt-player-sticky-caption',
       JSON.stringify({data: 'false', expiration: Date.now() + 3e10, creation: Date.now()}));
   } catch (e) {}
+  let applied = '';
   setInterval(() => {
     const p = document.getElementById('movie_player');
     if (!p) return;
     const v = p.querySelector('video');
-    if (p.classList.contains('ad-showing')) {
+    const want = new URLSearchParams(location.search).get('v');
+    const data = p.getVideoData ? p.getVideoData() : null;
+    const otherId = !!(data && data.video_id && want && data.video_id !== want);
+    const adUi = !!document.querySelector('.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, '
+      + '.ytp-ad-preview-container, .ytp-ad-text, .ytp-ad-badge');
+    if (p.classList.contains('ad-showing') && (otherId || adUi)) {
       const skip = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
       if (skip) skip.click();
-      // Only a short clip can be an ad: with uBlock the class may stick to the film itself.
-      else if (v && isFinite(v.duration) && v.duration > 0 && v.duration < 180) {
-        v.muted = true; v.currentTime = v.duration;
-      }
-    } else if (v && v.muted && v.dataset.bayunMuted !== '1') {
+      else if (v && isFinite(v.duration) && v.duration > 0) { v.muted = true; v.currentTime = v.duration; }
+      return;
+    }
+    if (v && v.muted && v.dataset.bayunMuted !== '1') {
       v.muted = false;  // never leave a video muted after an ad
       if (p.isMuted && p.isMuted()) p.unMute();
     }
+    if (window.__bayunQuality) {
+      const q = window.__bayunQuality.target();
+      const key = want + ':' + q;
+      if (key !== applied && window.__bayunQuality.apply(q)) applied = key;
+    }
   }, 300);
+})()"""
+
+# Quality helpers on the YouTube page: target() reads the preference, apply(q) picks the best level
+# not above q (0 = auto, 9999 = the best there is) and pins it; returns false until levels are known.
+YOUTUBE_QUALITY_JS = """(() => {
+  if (window.__bayunQuality) return;
+  const H = {highres: 4320, hd2880: 2880, hd2160: 2160, hd1440: 1440, hd1080: 1080, hd720: 720,
+             large: 480, medium: 360, small: 240, tiny: 144};
+  window.__bayunQuality = {
+    target() { try { return +(localStorage.getItem('bayun-quality') || 1080); } catch (e) { return 1080; } },
+    set(q) {
+      try {
+        localStorage.setItem('bayun-quality', String(q));
+        const now = Date.now();
+        if (q > 0 && q < 9999) localStorage.setItem('yt-player-quality', JSON.stringify({
+          data: JSON.stringify({quality: q, previousQuality: q}), expiration: now + 365 * 864e5, creation: now}));
+        else localStorage.removeItem('yt-player-quality');
+      } catch (e) {}
+      return this.apply(q);
+    },
+    apply(q) {
+      const p = document.getElementById('movie_player');
+      if (!p || !p.getAvailableQualityLevels) return false;
+      const levels = p.getAvailableQualityLevels().filter(l => H[l]);
+      if (!levels.length) return false;
+      if (!q) { p.setPlaybackQualityRange('auto', 'auto'); return 'auto'; }
+      const pick = levels.filter(l => H[l] <= q).sort((a, b) => H[b] - H[a])[0]
+        || levels.sort((a, b) => H[a] - H[b])[0];
+      p.setPlaybackQualityRange(pick, pick);
+      if (p.setPlaybackQuality) p.setPlaybackQuality(pick);
+      return pick;
+    },
+    current() {
+      const p = document.getElementById('movie_player');
+      const l = p && p.getPlaybackQuality ? p.getPlaybackQuality() : '';
+      return {level: l, height: H[l] || null,
+              available: p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : []};
+    },
+  };
 })()"""
 
 # Runs inside a VK Video page: skips ads (the player lives in a shadow root) and never leaves it muted.
@@ -122,19 +190,30 @@ PLAYER_JS = {
     "mute": "(v.muted = true, v.dataset.bayunMuted = '1', true)",
     "unmute": "(v.muted = false, v.dataset.bayunMuted = '', true)",
     "next": "(() => { const b = document.querySelector('.ytp-next-button');"
-            " if (!b || b.offsetParent === null) return false; b.click(); return true; })()",
+    " if (!b || b.offsetParent === null) return false; b.click(); return true; })()",
     "status": "({playing: !v.paused && !v.ended, currentTime: v.currentTime, duration: v.duration,"
-              " volume: Math.round(v.volume * 100), muted: v.muted, title: document.title, url: location.href})",
+    " volume: Math.round(v.volume * 100), muted: v.muted, title: document.title, url: location.href,"
+    " quality: window.__bayunQuality ? window.__bayunQuality.current() : null,"
+    " frames: v.getVideoPlaybackQuality ? (q => ({shown: q.totalVideoFrames,"
+    " dropped: q.droppedVideoFrames}))(v.getVideoPlaybackQuality()) : null})",
 }
 
 # name -> (key, code, windowsVirtualKeyCode)
 KEYS = {
-    "enter": ("Enter", "Enter", 13), "escape": ("Escape", "Escape", 27), "esc": ("Escape", "Escape", 27),
-    "space": (" ", "Space", 32), "tab": ("Tab", "Tab", 9), "backspace": ("Backspace", "Backspace", 8),
-    "up": ("ArrowUp", "ArrowUp", 38), "down": ("ArrowDown", "ArrowDown", 40),
-    "left": ("ArrowLeft", "ArrowLeft", 37), "right": ("ArrowRight", "ArrowRight", 39),
-    "page_up": ("PageUp", "PageUp", 33), "page_down": ("PageDown", "PageDown", 34),
-    "home": ("Home", "Home", 36), "end": ("End", "End", 35),
+    "enter": ("Enter", "Enter", 13),
+    "escape": ("Escape", "Escape", 27),
+    "esc": ("Escape", "Escape", 27),
+    "space": (" ", "Space", 32),
+    "tab": ("Tab", "Tab", 9),
+    "backspace": ("Backspace", "Backspace", 8),
+    "up": ("ArrowUp", "ArrowUp", 38),
+    "down": ("ArrowDown", "ArrowDown", 40),
+    "left": ("ArrowLeft", "ArrowLeft", 37),
+    "right": ("ArrowRight", "ArrowRight", 39),
+    "page_up": ("PageUp", "PageUp", 33),
+    "page_down": ("PageDown", "PageDown", 34),
+    "home": ("Home", "Home", 36),
+    "end": ("End", "End", 35),
 }
 for _ch in "abcdefghijklmnopqrstuvwxyz":
     KEYS[_ch] = (_ch, f"Key{_ch.upper()}", ord(_ch.upper()))
@@ -165,9 +244,20 @@ class Kiosk:
 
     def _start_browser(self) -> None:
         env_uid = f"/run/user/{os.getuid()}"
-        subprocess.run(["systemd-run", "--user", "--unit=bayun-screen", "--collect",
-                        f"-EXDG_RUNTIME_DIR={env_uid}", "-EWAYLAND_DISPLAY=wayland-0", *KIOSK_ARGS],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--unit=bayun-screen",
+                "--collect",
+                f"-EXDG_RUNTIME_DIR={env_uid}",
+                "-EWAYLAND_DISPLAY=wayland-0",
+                *KIOSK_ARGS,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     def conn(self) -> Connection:
         with self._lock:
@@ -186,7 +276,13 @@ class Kiosk:
             c = Connection(pages[0]["webSocketDebuggerUrl"])
             c.call("Page.enable")
             if self.emulate_tv:  # headless dev browser: same CSS viewport as the 4K TV at 200 %
-                c.call("Emulation.setDeviceMetricsOverride", width=1920, height=1080, deviceScaleFactor=2, mobile=False)
+                c.call(
+                    "Emulation.setDeviceMetricsOverride",
+                    width=1920,
+                    height=1080,
+                    deviceScaleFactor=2,
+                    mobile=False,
+                )
             c.call("Page.addScriptToEvaluateOnNewDocument", source=PAGE_SCRIPTS)
             c.on_event(self._on_event)
             self._conn = c
@@ -201,7 +297,8 @@ class Kiosk:
 
     def _on_event(self, method: str, params: dict) -> None:
         if method == "Page.loadEventFired" or (
-                method == "Page.frameNavigated" and not params.get("frame", {}).get("parentId")):
+            method == "Page.frameNavigated" and not params.get("frame", {}).get("parentId")
+        ):
             threading.Thread(target=self._install, daemon=True).start()
 
     def _install(self) -> None:
@@ -211,9 +308,11 @@ class Kiosk:
             return
         phase, text = self.overlay_state
         try:
-            c.evaluate(f"{PAGE_SCRIPTS};\n"
-                       f"window.__bayunOverlay && (window.__bayunOverlay.variant({json.dumps(self.variant)}),"
-                       f" window.__bayunOverlay.set({json.dumps(phase)}, {json.dumps(text, ensure_ascii=False)}))")
+            c.evaluate(
+                f"{PAGE_SCRIPTS};\n"
+                f"window.__bayunOverlay && (window.__bayunOverlay.variant({json.dumps(self.variant)}),"
+                f" window.__bayunOverlay.set({json.dumps(phase)}, {json.dumps(text, ensure_ascii=False)}))"
+            )
         except Exception:  # noqa: BLE001 - the page may be mid-navigation; the next event retries
             pass
 
@@ -227,8 +326,10 @@ class Kiosk:
         self.overlay_state = (phase, text)
         if self._conn is None or self._conn.closed.is_set():
             return  # nothing to draw on yet; applied on the next connect
-        js = f"window.__bayunOverlay && window.__bayunOverlay.set({json.dumps(phase)}, " \
-             f"{json.dumps(text, ensure_ascii=False)})"
+        js = (
+            f"window.__bayunOverlay && window.__bayunOverlay.set({json.dumps(phase)}, "
+            f"{json.dumps(text, ensure_ascii=False)})"
+        )
         if level is not None:
             js += f"; window.__bayunOverlay && window.__bayunOverlay.level({float(level)})"
         try:
@@ -241,7 +342,9 @@ class Kiosk:
     def click(self, x: float, y: float, count: int = 1) -> None:
         for n in range(1, count + 1):
             for kind in ("mousePressed", "mouseReleased"):
-                self.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=n)
+                self.call(
+                    "Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=n
+                )
 
     def key(self, name: str) -> None:
         name = name.lower()
@@ -249,10 +352,23 @@ class Kiosk:
             raise ApiError(400, f"unknown key {name!r}; known: {', '.join(sorted(KEYS))}")
         key, code, vk = KEYS[name]
         text = key if len(key) == 1 else ("\r" if key == "Enter" else "")
-        self.call("Input.dispatchKeyEvent", type="keyDown", key=key, code=code, text=text,
-                  windowsVirtualKeyCode=vk, nativeVirtualKeyCode=vk)
-        self.call("Input.dispatchKeyEvent", type="keyUp", key=key, code=code,
-                  windowsVirtualKeyCode=vk, nativeVirtualKeyCode=vk)
+        self.call(
+            "Input.dispatchKeyEvent",
+            type="keyDown",
+            key=key,
+            code=code,
+            text=text,
+            windowsVirtualKeyCode=vk,
+            nativeVirtualKeyCode=vk,
+        )
+        self.call(
+            "Input.dispatchKeyEvent",
+            type="keyUp",
+            key=key,
+            code=code,
+            windowsVirtualKeyCode=vk,
+            nativeVirtualKeyCode=vk,
+        )
 
 
 class Agent:
@@ -261,9 +377,11 @@ class Agent:
         self.tv = None
         if not args.no_tv:
             from bayun_tv.atv import AndroidTV
+
             self.tv = AndroidTV(TV_HOST, self._input_uri())
         self.kiosk.variant = args.variant
         self.results: list[dict] = []
+        self.selected = 0  # 1-based result highlighted on the cards; 0 = no cards on screen
         if not args.no_status:
             threading.Thread(target=self._follow_status, daemon=True).start()
 
@@ -290,7 +408,9 @@ class Agent:
                         state = json.loads(line[5:])
                         log = state.get("log") or []
                         last = log[-1] if log and log[-1].get("who") in ("user", "bayun") else {}
-                        self.kiosk.overlay(state.get("phase", "idle"), last.get("text", ""), state.get("level"))
+                        self.kiosk.overlay(
+                            state.get("phase", "idle"), last.get("text", ""), state.get("level")
+                        )
             except (OSError, ValueError, http.client.HTTPException):
                 pass
             self.kiosk.overlay("idle", "")
@@ -326,16 +446,21 @@ class Agent:
         for _ in range(40):
             time.sleep(0.25)
             try:
+                k.evaluate(YOUTUBE_QUALITY_JS)
                 k.evaluate(YOUTUBE_PAGE_JS)
-                state = k.evaluate("(() => { const v = document.querySelector('#movie_player video');"
-                                   " if (!v) return 'none'; if (v.paused) v.play(); return v.paused ? 'paused' : 'playing'; })()")
+                state = k.evaluate(
+                    "(() => { const v = document.querySelector('#movie_player video');"
+                    " if (!v) return 'none'; if (v.paused) v.play(); return v.paused ? 'paused' : 'playing'; })()"
+                )
                 if state == "playing":
                     break
             except Exception:  # noqa: BLE001
                 pass
         try:
-            k.evaluate("(() => { const p = document.getElementById('movie_player');"
-                       " if (p && p.unloadModule) p.unloadModule('captions'); })()")
+            k.evaluate(
+                "(() => { const p = document.getElementById('movie_player');"
+                " if (p && p.unloadModule) p.unloadModule('captions'); })()"
+            )
             self.fullscreen()
         except Exception:  # noqa: BLE001
             pass
@@ -346,8 +471,10 @@ class Agent:
             time.sleep(0.25)
             try:
                 k.evaluate(VK_PAGE_JS)
-                state = k.evaluate("(() => { const v = window.__bayunScreen && window.__bayunScreen.video();"
-                                   " if (!v) return 'none'; if (v.paused) v.play(); return v.paused ? 'paused' : 'playing'; })()")
+                state = k.evaluate(
+                    "(() => { const v = window.__bayunScreen && window.__bayunScreen.video();"
+                    " if (!v) return 'none'; if (v.paused) v.play(); return v.paused ? 'paused' : 'playing'; })()"
+                )
                 if state == "playing":
                     break
             except Exception:  # noqa: BLE001
@@ -359,11 +486,13 @@ class Agent:
 
     def fullscreen(self) -> bool:
         k = self.kiosk
-        pos = k.evaluate("(() => { if (document.fullscreenElement) return 'already';"
-                         " const p = document.getElementById('movie_player')"
-                         " || (window.__bayunScreen && window.__bayunScreen.video()) || document.querySelector('video');"
-                         " if (!p) return null; const r = p.getBoundingClientRect();"
-                         " return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+        pos = k.evaluate(
+            "(() => { if (document.fullscreenElement) return 'already';"
+            " const p = document.getElementById('movie_player')"
+            " || (window.__bayunScreen && window.__bayunScreen.video()) || document.querySelector('video');"
+            " if (!p) return null; const r = p.getBoundingClientRect();"
+            " return [r.left + r.width / 2, r.top + r.height / 2]; })()"
+        )
         if pos == "already":
             return True
         if not pos:
@@ -394,7 +523,23 @@ class Agent:
         threading.Thread(target=self._to_tv, daemon=True).start()
         return {"url": url}
 
+    def quality(self, value: Any) -> dict:
+        """value: 2160, 1440, 1080, 720, 480; 0 = auto; 9999 = the best the video has."""
+        q = int(float(value))
+        k = self.kiosk
+        if "youtube.com" not in (k.evaluate("location.hostname") or ""):
+            raise ApiError(409, "quality is only for YouTube")
+        k.evaluate(YOUTUBE_QUALITY_JS)
+        level = k.evaluate(f"window.__bayunQuality.set({q})")
+        if not level:
+            raise ApiError(409, "the player has no quality levels yet")
+        return {"quality": level}
+
     def player(self, action: str, value: Any = None) -> dict:
+        if action == "quality":
+            if value is None:
+                raise ApiError(400, "quality needs a value")
+            return self.quality(value)
         if action not in PLAYER_JS:
             raise ApiError(400, f"unknown action {action!r}; known: {', '.join(PLAYER_JS)}")
         body = PLAYER_JS[action]
@@ -402,9 +547,12 @@ class Agent:
             if value is None:
                 raise ApiError(400, f"{action} needs a value")
             body = body.replace("ARG", str(float(value)))
-        r = self.kiosk.evaluate(f"(async () => {{ const v = (window.__bayunScreen && window.__bayunScreen.video())"
-                                f" || document.querySelector('video');"
-                                f" if (!v) return null; return await {body}; }})()", await_promise=True)
+        r = self.kiosk.evaluate(
+            f"(async () => {{ const v = (window.__bayunScreen && window.__bayunScreen.video())"
+            f" || document.querySelector('video');"
+            f" if (!v) return null; return await {body}; }})()",
+            await_promise=True,
+        )
         if r is None:
             raise ApiError(404, "no video on the page")
         if action == "status":
@@ -416,7 +564,9 @@ class Agent:
     def status(self) -> dict:
         out: dict[str, Any] = {"overlay": self.kiosk.overlay_state[0]}
         try:
-            out["page"] = self.kiosk.evaluate("({url: location.href, title: document.title})", timeout=2)
+            out["page"] = self.kiosk.evaluate(
+                "({url: location.href, title: document.title})", timeout=2
+            )
             try:
                 out["player"] = self.player("status")
             except ApiError:
@@ -442,19 +592,17 @@ class Agent:
                     time.sleep(1.5)
                     self.kiosk.call("Page.navigate", url=url)
                     continue
-                results = self.kiosk.evaluate(
-                    f"window.__bayunScreen ? window.__bayunScreen.youtubeResults({int(n)}) : []") or []
+                results = (
+                    self.kiosk.evaluate(
+                        f"window.__bayunScreen ? window.__bayunScreen.youtubeResults({int(n)}) : []"
+                    )
+                    or []
+                )
                 if len(results) >= min(n, 3):
                     break
             except Exception:  # noqa: BLE001
                 pass
-        self.results = results
-        if results:
-            self.kiosk.evaluate("window.__bayunOverlay && window.__bayunOverlay.hints("
-                                + json.dumps([{k: r[k] for k in ("n", "x", "y", "w", "h")} for r in results])
-                                + ")")
-        return {"query": q, "results": [{k: r[k] for k in ("n", "title", "channel", "duration", "url")}
-                                        for r in results]}
+        return self._show_results(q, results)
 
     def vk_search(self, q: str, n: int = 8) -> dict:
         url = "https://vkvideo.ru/?" + urllib.parse.urlencode({"q": q})
@@ -464,33 +612,88 @@ class Agent:
         for _ in range(80):
             time.sleep(0.1)
             try:
-                results = self.kiosk.evaluate(
-                    f"window.__bayunScreen ? window.__bayunScreen.vkResults({int(n)}) : []") or []
+                results = (
+                    self.kiosk.evaluate(
+                        f"window.__bayunScreen ? window.__bayunScreen.vkResults({int(n)}) : []"
+                    )
+                    or []
+                )
                 if len(results) >= min(n, 3):
                     break
             except Exception:  # noqa: BLE001
                 pass
+        return self._show_results(q, results)
+
+    def _show_results(self, q: str, results: list) -> dict:
         self.results = results
-        if results:
-            self.kiosk.evaluate("window.__bayunOverlay && window.__bayunOverlay.hints("
-                                + json.dumps([{k: r[k] for k in ("n", "x", "y", "w", "h")} for r in results])
-                                + ")")
-        return {"query": q, "results": [{k: r[k] for k in ("n", "title", "channel", "duration", "url")}
-                                        for r in results]}
+        self.selected = 1 if results else 0
+        self._draw_cards()
+        return {
+            "query": q,
+            "selected": self.selected,
+            "results": [
+                {k: r.get(k, "") for k in ("n", "title", "channel", "duration", "url")}
+                for r in results
+            ],
+        }
+
+    def _draw_cards(self) -> None:
+        cards = (
+            [
+                {k: r.get(k, "") for k in ("n", "title", "channel", "duration", "thumb")}
+                for r in self.results
+            ]
+            if self.selected
+            else None
+        )
+        try:
+            self.kiosk.evaluate(
+                f"window.__bayunOverlay && window.__bayunOverlay.cards("
+                f"{json.dumps(cards, ensure_ascii=False)}, {int(self.selected)})"
+            )
+        except Exception:  # noqa: BLE001 - the cards are a convenience; the list is in the reply anyway
+            pass
+
+    def select(self, move: int = 0, n: int | None = None) -> dict:
+        """Highlight a result card: move ±1 (wraps around) or jump to n."""
+        if not self.results:
+            raise ApiError(404, "no results on screen; search first")
+        count = len(self.results)
+        if n is not None:
+            if not 1 <= int(n) <= count:
+                raise ApiError(404, f"no result number {n}")
+            self.selected = int(n)
+        else:
+            self.selected = (max(1, self.selected) - 1 + int(move)) % count + 1
+        self._draw_cards()
+        r = self.results[self.selected - 1]
+        return {
+            "selected": self.selected,
+            "title": r["title"],
+            "channel": r.get("channel", ""),
+            "duration": r.get("duration", ""),
+        }
+
+    def hide_results(self) -> dict:
+        self.selected = 0
+        self._draw_cards()
+        return {"cards": False}
 
     def youtube_play(self, n: int) -> dict:
         """Play result n of the last /youtube/search or /vk/search."""
         match = [r for r in self.results if r["n"] == int(n)]
         if not match:
             raise ApiError(404, f"no result number {n}; search first")
-        self.kiosk.evaluate("window.__bayunOverlay && window.__bayunOverlay.hints(null)")
+        self.hide_results()
         return {**self.open(match[0]["url"]), "title": match[0]["title"]}
 
     def screen_list(self, hints: bool | None = None) -> dict:
         items = self.kiosk.evaluate("window.__bayunScreen.list(40)") or []
         show = self.kiosk.hints_on if hints is None else hints
         if show:
-            self.kiosk.evaluate(f"window.__bayunOverlay && window.__bayunOverlay.hints({json.dumps(items)})")
+            self.kiosk.evaluate(
+                f"window.__bayunOverlay && window.__bayunOverlay.hints({json.dumps(items)})"
+            )
         return {"items": [{k: i[k] for k in ("n", "text", "tag")} for i in items]}
 
     def route(self, method: str, path: str, body: dict) -> Any:
@@ -505,6 +708,7 @@ class Agent:
         elif path == "/open":
             r = self.open(_need(body, "url"))
         elif path == "/home":
+            self.selected = 0
             k.call("Page.navigate", url=HOME_URL)
             threading.Thread(target=self._to_tv, daemon=True).start()
             r = {"url": HOME_URL}
@@ -517,7 +721,9 @@ class Agent:
         elif path == "/overlay":
             if "variant" in body:
                 k.variant = body["variant"]
-                k.evaluate(f"window.__bayunOverlay && window.__bayunOverlay.variant({json.dumps(k.variant)})")
+                k.evaluate(
+                    f"window.__bayunOverlay && window.__bayunOverlay.variant({json.dumps(k.variant)})"
+                )
             if "phase" in body:
                 k.overlay(body["phase"], body.get("text", ""), body.get("level"))
             r = {"overlay": k.overlay_state[0], "variant": k.variant}
@@ -525,12 +731,20 @@ class Agent:
             r = self.screen_list(body.get("hints"))
         elif path == "/screen/hints":
             k.hints_on = bool(body.get("on", True))
-            r = self.screen_list(True) if k.hints_on else (
-                k.evaluate("window.__bayunOverlay && window.__bayunOverlay.hints(null)") or {"hints": False})
+            r = (
+                self.screen_list(True)
+                if k.hints_on
+                else (
+                    k.evaluate("window.__bayunOverlay && window.__bayunOverlay.hints(null)")
+                    or {"hints": False}
+                )
+            )
         elif path == "/screen/click":
             r = self._point_click(int(_need(body, "n")))
         elif path == "/screen/click_text":
-            n = k.evaluate(f"window.__bayunScreen.findText({json.dumps(_need(body, 'text'), ensure_ascii=False)})")
+            n = k.evaluate(
+                f"window.__bayunScreen.findText({json.dumps(_need(body, 'text'), ensure_ascii=False)})"
+            )
             if not n:
                 raise ApiError(404, f"nothing visible matches {body['text']!r}")
             r = self._point_click(n)
@@ -538,8 +752,14 @@ class Agent:
             sign = -1 if body.get("dir", "down") == "up" else 1
             amount = float(body.get("amount", 1))
             w, h = k.evaluate("[innerWidth, innerHeight]")
-            k.call("Input.dispatchMouseEvent", type="mouseWheel", x=w / 2, y=h / 2,
-                   deltaX=0, deltaY=sign * amount * h * 0.8)
+            k.call(
+                "Input.dispatchMouseEvent",
+                type="mouseWheel",
+                x=w / 2,
+                y=h / 2,
+                deltaX=0,
+                deltaY=sign * amount * h * 0.8,
+            )
             r = {"scrolled": sign * amount}
         elif path == "/screen/back":
             k.evaluate("history.back()")
@@ -555,6 +775,14 @@ class Agent:
             r = self.youtube_search(_need(body, "q"), int(body.get("n", 8)))
         elif path in ("/youtube/play", "/vk/play"):
             r = self.youtube_play(int(_need(body, "n")))
+        elif path == "/results/select":
+            r = self.select(int(body.get("move", 0)), body.get("n"))
+        elif path == "/results/confirm":
+            if not self.selected:
+                raise ApiError(404, "no result is selected; search first")
+            r = self.youtube_play(self.selected)
+        elif path == "/results/hide":
+            r = self.hide_results()
         elif path == "/vk/search":
             r = self.vk_search(_need(body, "q"), int(body.get("n", 8)))
         elif path == "/tv/power":
@@ -631,7 +859,9 @@ def main() -> None:
     p.add_argument("--no-tv", action="store_true", help="do not talk to the Android TV")
     p.add_argument("--no-status", action="store_true", help="do not follow the voice loop state")
     p.add_argument("--variant", default="aurora", choices=["aurora", "orb", "edge"])
-    p.add_argument("--emulate-tv", action="store_true", help="dev: 1920x1080 CSS viewport at 2x in headless")
+    p.add_argument(
+        "--emulate-tv", action="store_true", help="dev: 1920x1080 CSS viewport at 2x in headless"
+    )
     args = p.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(Agent(args)))
     server.daemon_threads = True
